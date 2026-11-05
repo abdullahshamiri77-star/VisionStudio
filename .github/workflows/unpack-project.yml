@@ -1,0 +1,36 @@
+name: Extract Android Project
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download repository
+        uses: actions/checkout@v4
+
+      - name: Extract project files
+        run: |
+          mkdir -p /tmp/vision
+          unzip -q VisionStudio_CloudBuild.zip -d /tmp/vision
+
+          if [ -d /tmp/vision/VisionStudio_CloudBuild ]; then
+            cp -a /tmp/vision/VisionStudio_CloudBuild/. .
+          else
+            cp -a /tmp/vision/. .
+          fi
+
+          rm -f VisionStudio_CloudBuild.zip
+
+      - name: Save project files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Add Vision Studio Android project"
+          git push
