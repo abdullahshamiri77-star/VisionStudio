@@ -1,9 +1,14 @@
 
 package com.visionstudio.app
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.media.MediaPlayer
+import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -26,10 +31,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
+import java.io.File
 
 private val Bg = Color(0xFF101114)
 private val Panel = Color(0xFF1B1A1F)
@@ -56,8 +63,77 @@ fun VisionApp() {
     var duration by remember { mutableLongStateOf(0L) }
     var playhead by remember { mutableFloatStateOf(0f) }
 
+    var recorder by remember { mutableStateOf<MediaRecorder?>(null) }
+    var recordingFile by remember { mutableStateOf<File?>(null) }
+    var savedRecording by remember { mutableStateOf<File?>(null) }
+    var isRecording by remember { mutableStateOf(false) }
+    var isPaused by remember { mutableStateOf(false) }
+    var isAudioPlaying by remember { mutableStateOf(false) }
+    var audioMessage by remember { mutableStateOf("جاهز للتسجيل") }
+
+    var audioPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+
+    val player = remember(context) {
+        ExoPlayer.Builder(context).build()
+    }
+
+    fun startRecording() {
+        try {
+            val musicFolder = context.getExternalFilesDir(
+                Environment.DIRECTORY_MUSIC
+            ) ?: context.cacheDir
+
+            if (!musicFolder.exists()) {
+                musicFolder.mkdirs()
+            }
+
+            val file = File(
+                musicFolder,
+                "VisionAudio_${System.currentTimeMillis()}.m4a"
+            )
+
+            val newRecorder = MediaRecorder()
+
+            newRecorder.setAudioSource(MediaRecorder.AudioSource.MIC)
+            newRecorder.setOutputFormat(
+                MediaRecorder.OutputFormat.MPEG_4
+            )
+            newRecorder.setAudioEncoder(
+                MediaRecorder.AudioEncoder.AAC
+            )
+            newRecorder.setAudioEncodingBitRate(128000)
+            newRecorder.setAudioSamplingRate(44100)
+            newRecorder.setOutputFile(file.absolutePath)
+
+            newRecorder.prepare()
+            newRecorder.start()
+
+            recorder = newRecorder
+            recordingFile = file
+            isRecording = true
+            isPaused = false
+            audioMessage = "جاري التسجيل..."
+        } catch (e: Exception) {
+            recorder?.release()
+            recorder = null
+            isRecording = false
+            isPaused = false
+            audioMessage = "تعذر بدء التسجيل: ${e.message}"
+        }
+    }
+
+    val microphonePermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            startRecording()
+        } else {
+            audioMessage = "يجب السماح باستخدام الميكروفون"
+        }
+    }
+
     val videoPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
+        ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
             try {
@@ -67,19 +143,24 @@ fun VisionApp() {
                 )
             } catch (_: Exception) {
             }
+
             mediaUri = uri
             currentPosition = 0L
             playhead = 0f
         }
     }
 
-    val player = remember(context) {
-        ExoPlayer.Builder(context).build()
-    }
-
     DisposableEffect(player) {
         onDispose {
             player.release()
+            try {
+                recorder?.release()
+            } catch (_: Exception) {
+            }
+            try {
+                audioPlayer?.release()
+            } catch (_: Exception) {
+            }
         }
     }
 
@@ -193,7 +274,7 @@ fun VisionApp() {
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .weight(1f)
+                    .weight(if (selected == "Audio") 0.75f else 1f)
                     .background(Color.Black, RoundedCornerShape(16.dp)),
                 contentAlignment = Alignment.Center
             ) {
@@ -201,16 +282,12 @@ fun VisionApp() {
                     AndroidView(
                         modifier = Modifier.fillMaxSize(),
                         factory = { viewContext ->
-                            PlayerView(viewContext).apply {
-                                AndroidView(
-    modifier = Modifier.fillMaxSize(),
-    factory = { viewContext ->
-        PlayerView(viewContext)
-    },
-    update = { view ->
-        view.player = player
-    }
-)
+                            PlayerView(viewContext)
+                        },
+                        update = { view ->
+                            view.player = player
+                        }
+                    )
                 } else {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -258,14 +335,12 @@ fun VisionApp() {
                 }
             }
 
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(
                     onClick = {
-                        if (mediaUri != null) {
-                            player.seekTo(0L)
-                        }
+                        if (mediaUri != null) player.seekTo(0L)
                     }
                 ) {
                     Icon(
@@ -381,7 +456,199 @@ fun VisionApp() {
                 Track("A", "صوت / موسيقى", Color(0xFF38A78B))
             }
 
-            Spacer(Modifier.height(10.dp))
+            if (selected == "Audio") {
+                Spacer(Modifier.height(8.dp))
+
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(Panel, RoundedCornerShape(12.dp))
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Mic,
+                            tint = Gold,
+                            contentDescription = null
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "استوديو التسجيل الصوتي",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Text(
+                        audioMessage,
+                        color = if (isRecording) Gold else Muted,
+                        fontSize = 12.sp
+                    )
+
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Button(
+                            enabled = !isRecording,
+                            onClick = {
+                                val granted = ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.RECORD_AUDIO
+                                ) == PackageManager.PERMISSION_GRANTED
+
+                                if (granted) {
+                                    startRecording()
+                                } else {
+                                    microphonePermission.launch(
+                                        Manifest.permission.RECORD_AUDIO
+                                    )
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Gold,
+                                contentColor = Bg
+                            )
+                        ) {
+                            Icon(
+                                Icons.Default.Mic,
+                                contentDescription = null
+                            )
+                            Text("تسجيل")
+                        }
+
+                        Button(
+                            enabled = isRecording,
+                            onClick = {
+                                try {
+                                    if (isPaused) {
+                                        recorder?.resume()
+                                        isPaused = false
+                                        audioMessage = "جاري التسجيل..."
+                                    } else {
+                                        recorder?.pause()
+                                        isPaused = true
+                                        audioMessage = "التسجيل متوقف مؤقتاً"
+                                    }
+                                } catch (e: Exception) {
+                                    audioMessage = "تعذر تغيير حالة التسجيل"
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF38343D)
+                            )
+                        ) {
+                            Icon(
+                                if (isPaused) Icons.Default.PlayArrow
+                                else Icons.Default.Pause,
+                                contentDescription = null
+                            )
+                            Text(if (isPaused) "استئناف" else "إيقاف مؤقت")
+                        }
+
+                        Button(
+                            enabled = isRecording,
+                            onClick = {
+                                try {
+                                    recorder?.stop()
+                                    savedRecording = recordingFile
+                                    audioMessage = "تم حفظ التسجيل بنجاح"
+                                } catch (e: Exception) {
+                                    audioMessage = "لم يكتمل التسجيل"
+                                    recordingFile?.delete()
+                                } finally {
+                                    recorder?.release()
+                                    recorder = null
+                                    recordingFile = null
+                                    isRecording = false
+                                    isPaused = false
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF8B3030)
+                            )
+                        ) {
+                            Icon(
+                                Icons.Default.Stop,
+                                contentDescription = null
+                            )
+                            Text("إنهاء")
+                        }
+                    }
+
+                    if (savedRecording != null) {
+                        Text(
+                            "آخر تسجيل: ${savedRecording!!.name}",
+                            color = Muted,
+                            fontSize = 10.sp
+                        )
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Button(
+                                enabled = !isAudioPlaying,
+                                onClick = {
+                                    try {
+                                        audioPlayer?.release()
+                                        audioPlayer = MediaPlayer().apply {
+                                            setDataSource(
+                                                savedRecording!!.absolutePath
+                                            )
+                                            prepare()
+                                            setOnCompletionListener {
+                                                it.release()
+                                                audioPlayer = null
+                                                isAudioPlaying = false
+                                            }
+                                            start()
+                                        }
+                                        isAudioPlaying = true
+                                        audioMessage = "يتم تشغيل التسجيل"
+                                    } catch (e: Exception) {
+                                        audioMessage = "تعذر تشغيل التسجيل"
+                                        isAudioPlaying = false
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF38343D)
+                                )
+                            ) {
+                                Icon(
+                                    Icons.Default.PlayArrow,
+                                    contentDescription = null
+                                )
+                                Text("استماع")
+                            }
+
+                            OutlinedButton(
+                                enabled = isAudioPlaying,
+                                onClick = {
+                                    try {
+                                        audioPlayer?.stop()
+                                        audioPlayer?.release()
+                                    } catch (_: Exception) {
+                                    }
+                                    audioPlayer = null
+                                    isAudioPlaying = false
+                                    audioMessage = "تم إيقاف التشغيل"
+                                }
+                            ) {
+                                Icon(
+                                    Icons.Default.Stop,
+                                    contentDescription = null
+                                )
+                                Text("إيقاف")
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
 
             Row(
                 Modifier.fillMaxWidth(),
