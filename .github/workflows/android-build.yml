@@ -1,3 +1,4 @@
+
 name: Build Vision Studio APK
 
 on:
@@ -34,4 +35,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          
+          name: Vision-Studio-APK
+          path: app/build/outputs/apk/debug/*.apk
