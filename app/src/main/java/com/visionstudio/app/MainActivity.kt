@@ -211,12 +211,6 @@ fun VisionApp() {
         view.player = player
     }
 )
-                            }
-                        },
-                        update = { view ->
-                            view.player = player
-                        }
-                    )
                 } else {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
