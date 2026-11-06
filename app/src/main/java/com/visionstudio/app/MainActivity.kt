@@ -1,9 +1,13 @@
 
 package com.visionstudio.app
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -17,9 +21,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
+import kotlinx.coroutines.delay
 
 private val Bg = Color(0xFF101114)
 private val Panel = Color(0xFF1B1A1F)
@@ -29,14 +39,80 @@ private val Muted = Color(0xFF92909A)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { VisionApp() }
+        setContent {
+            VisionApp()
+        }
     }
 }
 
 @Composable
 fun VisionApp() {
+    val context = LocalContext.current
+
     var selected by remember { mutableStateOf("Edit") }
-    var playhead by remember { mutableFloatStateOf(0.22f) }
+    var mediaUri by remember { mutableStateOf<Uri?>(null) }
+    var isPlaying by remember { mutableStateOf(false) }
+    var currentPosition by remember { mutableLongStateOf(0L) }
+    var duration by remember { mutableLongStateOf(0L) }
+    var playhead by remember { mutableFloatStateOf(0f) }
+
+    val videoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (_: Exception) {
+            }
+            mediaUri = uri
+            currentPosition = 0L
+            playhead = 0f
+        }
+    }
+
+    val player = remember(context) {
+        ExoPlayer.Builder(context).build()
+    }
+
+    DisposableEffect(player) {
+        onDispose {
+            player.release()
+        }
+    }
+
+    LaunchedEffect(mediaUri) {
+        if (mediaUri != null) {
+            player.setMediaItem(MediaItem.fromUri(mediaUri!!))
+            player.prepare()
+            player.pause()
+            isPlaying = false
+            currentPosition = 0L
+            playhead = 0f
+        } else {
+            player.stop()
+            isPlaying = false
+        }
+    }
+
+    LaunchedEffect(player, mediaUri) {
+        while (true) {
+            if (mediaUri != null) {
+                currentPosition = player.currentPosition.coerceAtLeast(0L)
+                duration = player.duration.coerceAtLeast(0L)
+                isPlaying = player.isPlaying
+
+                playhead = if (duration > 0L) {
+                    currentPosition.toFloat() / duration.toFloat()
+                } else {
+                    0f
+                }
+            }
+            delay(250)
+        }
+    }
 
     MaterialTheme(
         colorScheme = darkColorScheme(
@@ -46,11 +122,15 @@ fun VisionApp() {
         )
     ) {
         Column(
-            Modifier.fillMaxSize().background(Bg).padding(12.dp)
+            Modifier
+                .fillMaxSize()
+                .background(Bg)
+                .padding(12.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
-                    Modifier.size(38.dp)
+                    Modifier
+                        .size(38.dp)
                         .background(Gold, RoundedCornerShape(12.dp)),
                     contentAlignment = Alignment.Center
                 ) {
@@ -72,7 +152,7 @@ fun VisionApp() {
                         letterSpacing = 1.5.sp
                     )
                     Text(
-                        "PRO VIDEO EDITOR • 0.1",
+                        "PRO VIDEO EDITOR • 0.2",
                         color = Muted,
                         fontSize = 10.sp
                     )
@@ -97,7 +177,12 @@ fun VisionApp() {
                     .forEach { item ->
                         FilterChip(
                             selected = selected == item,
-                            onClick = { selected = item },
+                            onClick = {
+                                selected = item
+                                if (item == "Media") {
+                                    videoPicker.launch(arrayOf("video/*"))
+                                }
+                            },
                             label = { Text(item) }
                         )
                     }
@@ -106,33 +191,63 @@ fun VisionApp() {
             Spacer(Modifier.height(12.dp))
 
             Box(
-                Modifier.fillMaxWidth()
+                Modifier
+                    .fillMaxWidth()
                     .weight(1f)
                     .background(Color.Black, RoundedCornerShape(16.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Default.Movie,
-                        tint = Color(0xFF45434A),
-                        modifier = Modifier.size(54.dp),
-                        contentDescription = null
+                if (mediaUri != null) {
+                    AndroidView(
+                        modifier = Modifier.fillMaxSize(),
+                        factory = { viewContext ->
+                            PlayerView(viewContext).apply {
+                                AndroidView(
+    modifier = Modifier.fillMaxSize(),
+    factory = { viewContext ->
+        PlayerView(viewContext)
+    },
+    update = { view ->
+        view.player = player
+    }
+)
+                            }
+                        },
+                        update = { view ->
+                            view.player = player
+                        }
                     )
-                    Text(
-                        "VIDEO PREVIEW",
-                        color = Color(0xFF55525B),
-                        fontSize = 12.sp,
-                        letterSpacing = 2.sp
-                    )
-                    Text(
-                        "استورد مقطعًا لبدء التحرير",
-                        color = Muted,
-                        fontSize = 12.sp
-                    )
+                } else {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.clickable {
+                            videoPicker.launch(arrayOf("video/*"))
+                        }
+                    ) {
+                        Icon(
+                            Icons.Default.Movie,
+                            tint = Color(0xFF45434A),
+                            modifier = Modifier.size(54.dp),
+                            contentDescription = null
+                        )
+                        Text(
+                            "VIDEO PREVIEW",
+                            color = Color(0xFF55525B),
+                            fontSize = 12.sp,
+                            letterSpacing = 2.sp
+                        )
+                        Text(
+                            "استورد مقطعًا لبدء التحرير",
+                            color = Muted,
+                            fontSize = 12.sp
+                        )
+                    }
                 }
 
                 Row(
-                    Modifier.align(Alignment.BottomCenter).padding(12.dp),
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
@@ -152,7 +267,13 @@ fun VisionApp() {
             Spacer(Modifier.height(10.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = {}) {
+                IconButton(
+                    onClick = {
+                        if (mediaUri != null) {
+                            player.seekTo(0L)
+                        }
+                    }
+                ) {
                     Icon(
                         Icons.Default.SkipPrevious,
                         contentDescription = "Previous",
@@ -160,16 +281,36 @@ fun VisionApp() {
                     )
                 }
 
-                IconButton(onClick = {}) {
+                IconButton(
+                    onClick = {
+                        if (mediaUri != null) {
+                            if (player.isPlaying) {
+                                player.pause()
+                            } else {
+                                player.play()
+                            }
+                            isPlaying = player.isPlaying
+                        } else {
+                            videoPicker.launch(arrayOf("video/*"))
+                        }
+                    }
+                ) {
                     Icon(
-                        Icons.Default.PlayArrow,
-                        contentDescription = "Play",
+                        if (isPlaying) Icons.Default.Pause
+                        else Icons.Default.PlayArrow,
+                        contentDescription = "Play or Pause",
                         tint = Gold,
                         modifier = Modifier.size(32.dp)
                     )
                 }
 
-                IconButton(onClick = {}) {
+                IconButton(
+                    onClick = {
+                        if (mediaUri != null && duration > 0L) {
+                            player.seekTo(duration)
+                        }
+                    }
+                ) {
                     Icon(
                         Icons.Default.SkipNext,
                         contentDescription = "Next",
@@ -180,12 +321,12 @@ fun VisionApp() {
                 Spacer(Modifier.weight(1f))
 
                 Text(
-                    "00:00:12:08",
+                    formatTime(currentPosition),
                     color = Gold,
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    " / 00:00:54:00",
+                    " / ${formatTime(duration)}",
                     color = Muted,
                     fontSize = 12.sp
                 )
@@ -219,16 +360,24 @@ fun VisionApp() {
             }
 
             Slider(
-                value = playhead,
-                onValueChange = { playhead = it },
+                value = playhead.coerceIn(0f, 1f),
+                onValueChange = { value ->
+                    playhead = value
+                    if (duration > 0L) {
+                        player.seekTo((duration * value).toLong())
+                    }
+                },
+                enabled = mediaUri != null && duration > 0L,
                 colors = SliderDefaults.colors(
                     thumbColor = Gold,
-                    activeTrackColor = Gold
+                    activeTrackColor = Gold,
+                    inactiveTrackColor = Panel
                 )
             )
 
             Column(
-                Modifier.fillMaxWidth()
+                Modifier
+                    .fillMaxWidth()
                     .background(Panel, RoundedCornerShape(12.dp))
                     .padding(8.dp),
                 verticalArrangement = Arrangement.spacedBy(7.dp)
@@ -244,10 +393,21 @@ fun VisionApp() {
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                BottomTool("إضافة", Icons.Default.Add)
-                BottomTool("قص", Icons.Default.ContentCut)
-                BottomTool("طبقات", Icons.Default.Layers)
-                BottomTool("تصدير", Icons.Default.Outbox)
+                BottomTool("إضافة", Icons.Default.Add) {
+                    videoPicker.launch(arrayOf("video/*"))
+                }
+                BottomTool("قص", Icons.Default.ContentCut) {
+                    if (mediaUri != null) {
+                        player.pause()
+                        isPlaying = false
+                    }
+                }
+                BottomTool("طبقات", Icons.Default.Layers) {
+                    selected = "Media"
+                }
+                BottomTool("تصدير", Icons.Default.Outbox) {
+                    selected = "Export"
+                }
             }
         }
     }
@@ -257,8 +417,13 @@ fun VisionApp() {
 fun Track(tag: String, title: String, color: Color) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
-            Modifier.width(28.dp).height(28.dp)
-                .background(color.copy(alpha = .18f), RoundedCornerShape(6.dp)),
+            Modifier
+                .width(28.dp)
+                .height(28.dp)
+                .background(
+                    color.copy(alpha = .18f),
+                    RoundedCornerShape(6.dp)
+                ),
             contentAlignment = Alignment.Center
         ) {
             Text(tag, color = color, fontWeight = FontWeight.Bold)
@@ -274,12 +439,22 @@ fun Track(tag: String, title: String, color: Color) {
         )
 
         Box(
-            Modifier.weight(1f).height(28.dp)
-                .background(color.copy(alpha = .22f), RoundedCornerShape(6.dp))
+            Modifier
+                .weight(1f)
+                .height(28.dp)
+                .background(
+                    color.copy(alpha = .22f),
+                    RoundedCornerShape(6.dp)
+                )
         ) {
             Box(
-                Modifier.fillMaxWidth(.58f).fillMaxHeight()
-                    .background(color.copy(alpha = .7f), RoundedCornerShape(6.dp))
+                Modifier
+                    .fillMaxWidth(.58f)
+                    .fillMaxHeight()
+                    .background(
+                        color.copy(alpha = .7f),
+                        RoundedCornerShape(6.dp)
+                    )
             )
         }
     }
@@ -288,11 +463,14 @@ fun Track(tag: String, title: String, color: Color) {
 @Composable
 fun BottomTool(
     label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable { }.padding(4.dp)
+        modifier = Modifier
+            .clickable { onClick() }
+            .padding(4.dp)
     ) {
         Icon(
             imageVector = icon,
@@ -301,4 +479,11 @@ fun BottomTool(
         )
         Text(label, color = Muted, fontSize = 10.sp)
     }
+}
+
+fun formatTime(milliseconds: Long): String {
+    val totalSeconds = (milliseconds / 1000L).coerceAtLeast(0L)
+    val minutes = totalSeconds / 60L
+    val seconds = totalSeconds % 60L
+    return "%02d:%02d".format(minutes, seconds)
 }
