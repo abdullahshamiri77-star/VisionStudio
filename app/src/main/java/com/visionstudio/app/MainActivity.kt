@@ -454,28 +454,33 @@ private fun PreviewPanel(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(formatTime(position), color = StudioGold, fontSize = 11.sp)
-            Spacer(Modifier.weight(1f))
-            IconButton(onClick = onStart, enabled = hasVideo) {
-                Icon(Icons.Default.SkipPrevious, null, tint = StudioWhite)
-            }
-            IconButton(
-                onClick = onPlay,
-                enabled = hasVideo,
-                modifier = Modifier
-                    .size(42.dp)
-                    .background(StudioGold, RoundedCornerShape(50))
-            ) {
-                Icon(
-                    if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    null,
-                    tint = Color.Black
-                )
-            }
-            IconButton(onClick = onEnd, enabled = hasVideo) {
-                Icon(Icons.Default.SkipNext, null, tint = StudioWhite)
-            }
-            Spacer(Modifier.weight(1f))
-            Text(formatTime(duration), color = StudioMuted, fontSize = 11.sp)
+Spacer(Modifier.weight(1f))
+
+IconButton(onClick = onStart, enabled = hasVideo) {
+    Icon(Icons.Default.SkipPrevious, null, tint = StudioWhite)
+}
+
+IconButton(
+    onClick = onPlay,
+    enabled = hasVideo,
+    modifier = Modifier
+        .size(42.dp)
+        .background(StudioGold, RoundedCornerShape(50))
+) {
+    Icon(
+        if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
+        null,
+        tint = Color.Black
+    )
+}
+
+IconButton(onClick = onEnd, enabled = hasVideo) {
+    Icon(Icons.Default.SkipNext, null, tint = StudioWhite)
+}
+
+Spacer(Modifier.weight(1f))
+Text(formatTime(duration), color = StudioMuted, fontSize = 11.sp)
+            
         }
     }
 }
@@ -511,16 +516,27 @@ private fun PageTools(
         Spacer(Modifier.height(10.dp))
 
         when (page) {
-            StudioPage.MEDIA -> {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ToolButton("Import Video", Icons.Default.Add, Modifier.weight(1f), onImport)
-                    ToolButton("Media Library", Icons.Default.Folder, Modifier.weight(1f)) {
-                        onStatus("Imported media is listed in the timeline")
-                    }
-                }
-            }
+    StudioPage.MEDIA -> {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ToolButton(
+                "Import Video",
+                Icons.Default.Add,
+                Modifier.weight(1f),
+                onImport
+            )
 
-            StudioPage.CUT, StudioPage.EDIT -> {
+            ToolButton(
+                "Media Library",
+                Icons.Default.Folder,
+                Modifier.weight(1f),
+                onClick = {
+                    onStatus("Imported media is listed in the timeline")
+                }
+            )
+        }
+    }
+
+    StudioPage.CUT, StudioPage.EDIT -> {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ToolButton("Split", Icons.Default.ContentCut, Modifier.weight(1f), onSplit)
                     ToolButton("Delete", Icons.Default.Delete, Modifier.weight(1f), onDelete, danger = true)
