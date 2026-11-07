@@ -10,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -23,8 +24,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -32,15 +33,19 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import kotlinx.coroutines.delay
 import java.util.Locale
 
-private val BackgroundColor = Color(0xFF101114)
-private val PanelColor = Color(0xFF1B1C21)
-private val GoldColor = Color(0xFFFFC247)
-private val WhiteColor = Color(0xFFF5F5F5)
-private val MutedColor = Color(0xFF9999A3)
-private val RedColor = Color(0xFFFF6262)
-private val GreenColor = Color(0xFF48C78E)
+private val StudioBg = Color(0xFF0B0C0F)
+private val StudioPanel = Color(0xFF17191E)
+private val StudioPanel2 = Color(0xFF20232A)
+private val StudioGold = Color(0xFFFFC247)
+private val StudioWhite = Color(0xFFF2F3F5)
+private val StudioMuted = Color(0xFF9298A4)
+private val StudioGreen = Color(0xFF42C995)
+private val StudioBlue = Color(0xFF55A8F5)
+private val StudioRed = Color(0xFFFF6262)
+private val StudioPurple = Color(0xFFB58AFF)
 
 data class VideoClip(
     val id: Int,
@@ -53,11 +58,29 @@ data class VideoClip(
         get() = (endMs - startMs).coerceAtLeast(0L)
 }
 
+enum class StudioPage(
+    val title: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector
+) {
+    MEDIA("Media", Icons.Default.VideoLibrary),
+    CUT("Cut", Icons.Default.ContentCut),
+    EDIT("Edit", Icons.Default.Edit),
+    FUSION("Fusion", Icons.Default.AutoAwesome),
+    COLOR("Color", Icons.Default.Palette),
+    AUDIO("Audio", Icons.Default.GraphicEq)
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
+            MaterialTheme(
+                colorScheme = darkColorScheme(
+                    background = StudioBg,
+                    surface = StudioPanel,
+                    primary = StudioGold
+                )
+            ) {
                 VisionStudioApp()
             }
         }
@@ -66,57 +89,36 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun VisionStudioApp() {
-    val context = LocalContext.current
+    val context = androidx.compose.ui.platform.LocalContext.current
 
-    var selectedTab by remember { mutableStateOf("الميديا") }
-    var videoTitle by remember {
-        mutableStateOf("لم يتم اختيار فيديو")
-    }
+    var page by remember { mutableStateOf(StudioPage.EDIT) }
+    var projectName by remember { mutableStateOf("Untitled Project") }
+    var status by remember { mutableStateOf("Ready • Import media to begin") }
+    var selectedClipId by remember { mutableIntStateOf(-1) }
+    var nextId by remember { mutableIntStateOf(1) }
     var currentPosition by remember { mutableLongStateOf(0L) }
-    var duration by remember { mutableLongStateOf(0L) }
-    var isPlaying by remember { mutableStateOf(false) }
-    var statusMessage by remember {
-        mutableStateOf("استورد فيديو لبدء مشروعك")
-    }
+    var playerDuration by remember { mutableLongStateOf(0L) }
+    var playing by remember { mutableStateOf(false) }
 
-    val clips = remember {
-        mutableStateListOf<VideoClip>()
-    }
+    val clips = remember { mutableStateListOf<VideoClip>() }
+    val player = remember { ExoPlayer.Builder(context).build() }
 
-    var selectedClipId by remember {
-        mutableIntStateOf(-1)
-    }
+    val selectedClip = clips.firstOrNull { it.id == selectedClipId }
 
-    var nextClipId by remember {
-        mutableIntStateOf(1)
-    }
-
-    val player = remember {
-        ExoPlayer.Builder(context).build()
-    }
-
-    val selectedClip = clips.firstOrNull {
-        it.id == selectedClipId
-    }
-
-    fun rebuildPlaylist(
-        startIndex: Int = 0,
-        positionMs: Long = 0L
-    ) {
+    fun rebuildPlaylist(index: Int = 0, position: Long = 0L) {
         if (clips.isEmpty()) {
             player.pause()
             player.clearMediaItems()
             currentPosition = 0L
-            duration = 0L
+            playerDuration = 0L
             return
         }
 
         val items = clips.map { clip ->
-            val clipping =
-                MediaItem.ClippingConfiguration.Builder()
-                    .setStartPositionMs(clip.startMs)
-                    .setEndPositionMs(clip.endMs)
-                    .build()
+            val clipping = MediaItem.ClippingConfiguration.Builder()
+                .setStartPositionMs(clip.startMs)
+                .setEndPositionMs(clip.endMs)
+                .build()
 
             MediaItem.Builder()
                 .setUri(clip.uri)
@@ -125,15 +127,9 @@ fun VisionStudioApp() {
                 .build()
         }
 
-        val safeIndex =
-            startIndex.coerceIn(0, items.lastIndex)
-
+        val safeIndex = index.coerceIn(0, items.lastIndex)
         player.pause()
-        player.setMediaItems(
-            items,
-            safeIndex,
-            positionMs.coerceAtLeast(0L)
-        )
+        player.setMediaItems(items, safeIndex, position.coerceAtLeast(0L))
         player.prepare()
     }
 
@@ -148,108 +144,81 @@ fun VisionStudioApp() {
 
         try {
             val retriever = MediaMetadataRetriever()
-
-            val videoDuration: Long
-
+            val length: Long
             try {
                 retriever.setDataSource(context, uri)
-
-                videoDuration = retriever.extractMetadata(
+                length = retriever.extractMetadata(
                     MediaMetadataRetriever.METADATA_KEY_DURATION
                 )?.toLongOrNull() ?: 0L
             } finally {
                 retriever.release()
             }
 
-            if (videoDuration <= 0L) {
-                statusMessage = "تعذر قراءة مدة الفيديو"
+            if (length <= 0L) {
+                status = "Could not read video duration"
                 return
             }
 
-            val name = uri.lastPathSegment
-                ?: "Video ${nextClipId}"
-
-            val newClip = VideoClip(
-                id = nextClipId++,
+            val name = uri.lastPathSegment ?: "Video ${nextId}"
+            val clip = VideoClip(
+                id = nextId++,
                 uri = uri,
                 name = name,
                 startMs = 0L,
-                endMs = videoDuration
+                endMs = length
             )
 
-            clips.add(newClip)
-            selectedClipId = newClip.id
-            videoTitle = name
-
-            rebuildPlaylist(clips.lastIndex, 0L)
-
-            statusMessage = "تمت إضافة الفيديو إلى Timeline"
-
+            clips.add(clip)
+            selectedClipId = clip.id
+            rebuildPlaylist(clips.lastIndex)
+            status = "Media added to timeline"
+            page = StudioPage.EDIT
         } catch (e: Exception) {
-            statusMessage =
-                "تعذر استيراد الفيديو: ${e.message}"
+            status = "Import failed: ${e.message}"
         }
     }
 
-    val videoPicker = rememberLauncherForActivityResult(
+    val picker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
-        if (uri != null) {
-            importVideo(uri)
-        }
+        if (uri != null) importVideo(uri)
     }
 
-    fun splitSelectedClip() {
-        val index = clips.indexOfFirst {
-            it.id == selectedClipId
-        }
-
+    fun splitClip() {
+        val index = clips.indexOfFirst { it.id == selectedClipId }
         if (index < 0) {
-            statusMessage = "حدد مقطعًا أولًا"
+            status = "Select a clip first"
             return
         }
 
         val clip = clips[index]
+        val splitAt = clip.startMs + player.currentPosition
 
-        val splitPoint =
-            clip.startMs + player.currentPosition
-
-        if (
-            splitPoint <= clip.startMs + 500L ||
-            splitPoint >= clip.endMs - 500L
+        if (splitAt <= clip.startMs + 500L ||
+            splitAt >= clip.endMs - 500L
         ) {
-            statusMessage =
-                "اختر موضعًا داخل المقطع بعيدًا عن البداية والنهاية"
+            status = "Move playhead inside the selected clip"
             return
         }
 
-        val firstPart = clip.copy(
-            endMs = splitPoint
+        val first = clip.copy(endMs = splitAt)
+        val second = clip.copy(
+            id = nextId++,
+            name = clip.name + " • Part 2",
+            startMs = splitAt
         )
 
-        val secondPart = clip.copy(
-            id = nextClipId++,
-            name = clip.name + " - الجزء الثاني",
-            startMs = splitPoint
-        )
-
-        clips[index] = firstPart
-        clips.add(index + 1, secondPart)
-
-        selectedClipId = secondPart.id
-
-        rebuildPlaylist(index + 1, 0L)
-
-        statusMessage = "تم تقسيم المقطع إلى جزأين"
+        clips[index] = first
+        clips.add(index + 1, second)
+        selectedClipId = second.id
+        rebuildPlaylist(index + 1)
+        status = "Clip split into two parts"
     }
 
-    fun deleteSelectedClip() {
-        val index = clips.indexOfFirst {
-            it.id == selectedClipId
-        }
-
+    fun deleteClip() {
+        val index = clips.indexOfFirst { it.id == selectedClipId }
         if (index < 0) {
-            statusMessage = "حدد مقطعًا للحذف"
+            status = "Select a clip to delete"
             return
         }
 
@@ -257,51 +226,35 @@ fun VisionStudioApp() {
 
         if (clips.isEmpty()) {
             selectedClipId = -1
-            videoTitle = "لم يتم اختيار فيديو"
             rebuildPlaylist()
-            statusMessage = "تم حذف آخر مقطع"
         } else {
-            val newIndex =
-                index.coerceAtMost(clips.lastIndex)
-
-            selectedClipId = clips[newIndex].id
-
-            rebuildPlaylist(newIndex, 0L)
-
-            statusMessage = "تم حذف المقطع المحدد"
+            val next = index.coerceAtMost(clips.lastIndex)
+            selectedClipId = clips[next].id
+            rebuildPlaylist(next)
         }
+
+        status = "Selected clip deleted"
     }
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
-
-            override fun onIsPlayingChanged(
-                playing: Boolean
-            ) {
-                isPlaying = playing
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                playing = isPlaying
             }
 
             override fun onMediaItemTransition(
                 mediaItem: MediaItem?,
                 reason: Int
             ) {
-                val id = mediaItem?.mediaId?.toIntOrNull()
-
-                if (id != null) {
-                    selectedClipId = id
-                }
+                selectedClipId = mediaItem?.mediaId?.toIntOrNull() ?: -1
             }
 
-            override fun onPlaybackStateChanged(
-                state: Int
-            ) {
-                duration =
-                    player.duration.coerceAtLeast(0L)
+            override fun onPlaybackStateChanged(state: Int) {
+                playerDuration = player.duration.coerceAtLeast(0L)
             }
         }
 
         player.addListener(listener)
-
         onDispose {
             player.removeListener(listener)
             player.release()
@@ -310,702 +263,557 @@ fun VisionStudioApp() {
 
     LaunchedEffect(player) {
         while (true) {
-            currentPosition =
-                player.currentPosition.coerceAtLeast(0L)
-
-            duration =
-                player.duration.coerceAtLeast(0L)
-
-            kotlinx.coroutines.delay(300)
+            currentPosition = player.currentPosition.coerceAtLeast(0L)
+            playerDuration = player.duration.coerceAtLeast(0L)
+            delay(250)
         }
     }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(BackgroundColor)
-            .verticalScroll(rememberScrollState())
-            .padding(bottom = 20.dp)
+            .background(StudioBg)
     ) {
-
-        // HEADER
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(PanelColor)
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(
-                modifier = Modifier.weight(1f)
-            ) {
-                Text(
-                    "VISION STUDIO",
-                    color = GoldColor,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.ExtraBold
-                )
-
-                Text(
-                    "Professional Video Editor",
-                    color = MutedColor,
-                    fontSize = 11.sp
-                )
-            }
-
-            Icon(
-                Icons.Default.Movie,
-                contentDescription = null,
-                tint = GoldColor,
-                modifier = Modifier.size(32.dp)
-            )
-        }
-
-        Spacer(Modifier.height(14.dp))
-
-        SectionTitle("معاينة الفيديو")
-
-        // VIDEO PREVIEW
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp)
-                .height(220.dp)
-                .background(
-                    Color.Black,
-                    RoundedCornerShape(12.dp)
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            if (clips.isNotEmpty()) {
-                AndroidView(
-                    modifier = Modifier.fillMaxSize(),
-                    factory = { viewContext ->
-                        PlayerView(viewContext).apply {
-                            useController = true
-                        }
-                    },
-                    update = { view ->
-                        view.player = player
-                    }
-                )
-            } else {
-                Column(
-                    horizontalAlignment =
-                        Alignment.CenterHorizontally
-                ) {
-                    Icon(
-                        Icons.Default.VideoLibrary,
-                        contentDescription = null,
-                        tint = GoldColor,
-                        modifier = Modifier.size(48.dp)
-                    )
-
-                    Spacer(Modifier.height(10.dp))
-
-                    Text(
-                        "استورد فيديو لبدء التحرير",
-                        color = WhiteColor
-                    )
-                }
-            }
-        }
-
-        Text(
-            videoTitle,
-            color = MutedColor,
-            fontSize = 12.sp,
-            modifier = Modifier.padding(16.dp)
+        StudioTopBar(
+            projectName = projectName,
+            onProjectNameChange = { projectName = it }
         )
-
-        // PLAYBACK CONTROLS
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(
-                onClick = {
-                    if (clips.isNotEmpty()) {
-                        player.seekTo(0L)
-                    }
-                },
-                enabled = clips.isNotEmpty()
-            ) {
-                Icon(
-                    Icons.Default.SkipPrevious,
-                    contentDescription = "البداية",
-                    tint = WhiteColor
-                )
-            }
-
-            IconButton(
-                onClick = {
-                    if (clips.isNotEmpty()) {
-                        if (player.isPlaying) {
-                            player.pause()
-                        } else {
-                            player.play()
-                        }
-                    }
-                },
-                enabled = clips.isNotEmpty(),
-                modifier = Modifier
-                    .background(
-                        GoldColor,
-                        RoundedCornerShape(50)
-                    )
-                    .size(52.dp)
-            ) {
-                Icon(
-                    if (isPlaying) {
-                        Icons.Default.Pause
-                    } else {
-                        Icons.Default.PlayArrow
-                    },
-                    contentDescription = "تشغيل",
-                    tint = Color.Black,
-                    modifier = Modifier.size(30.dp)
-                )
-            }
-
-            IconButton(
-                onClick = {
-                    if (clips.isNotEmpty()) {
-                        player.seekTo(player.duration)
-                    }
-                },
-                enabled = clips.isNotEmpty()
-            ) {
-                Icon(
-                    Icons.Default.SkipNext,
-                    contentDescription = "النهاية",
-                    tint = WhiteColor
-                )
-            }
-        }
-
-        Text(
-            "${formatTime(currentPosition)} / ${formatTime(duration)}",
-            color = MutedColor,
-            fontSize = 12.sp,
-            modifier = Modifier.align(
-                Alignment.CenterHorizontally
-            )
-        )
-
-        Spacer(Modifier.height(18.dp))
-
-        SectionTitle("أدوات التحرير")
-
-        val tabs = listOf(
-            "الميديا",
-            "تحرير",
-            "الصوت",
-            "النص",
-            "الألوان"
-        )
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 10.dp),
-            horizontalArrangement =
-                Arrangement.spacedBy(5.dp)
-        ) {
-            tabs.forEach { tab ->
-                val active = selectedTab == tab
-
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .background(
-                            if (active) GoldColor
-                            else PanelColor,
-                            RoundedCornerShape(8.dp)
-                        )
-                        .clickable {
-                            selectedTab = tab
-                        }
-                        .padding(vertical = 12.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        tab,
-                        color = if (active) {
-                            Color.Black
-                        } else {
-                            WhiteColor
-                        },
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        }
-
-        Spacer(Modifier.height(14.dp))
-
-        when (selectedTab) {
-
-            "الميديا" -> {
-                Panel {
-                    Text(
-                        "مكتبة الوسائط",
-                        color = WhiteColor,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Spacer(Modifier.height(12.dp))
-
-                    GoldButton(
-                        "استيراد فيديو من الهاتف"
-                    ) {
-                        videoPicker.launch(
-                            arrayOf("video/*")
-                        )
-                    }
-
-                    Text(
-                        "عدد المقاطع: ${clips.size}",
-                        color = MutedColor,
-                        fontSize = 12.sp
-                    )
-                }
-            }
-
-            "تحرير" -> {
-                Panel {
-                    Text(
-                        "أدوات تحرير المقطع",
-                        color = WhiteColor,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Spacer(Modifier.height(12.dp))
-
-                    Text(
-                        selectedClip?.name
-                            ?: "لم يتم تحديد مقطع",
-                        color = GoldColor,
-                        fontSize = 12.sp
-                    )
-
-                    if (selectedClip != null) {
-                        Text(
-                            "المدة: ${
-                                formatTime(
-                                    selectedClip.durationMs
-                                )
-                            }",
-                            color = MutedColor,
-                            fontSize = 11.sp
-                        )
-                    }
-
-                    GoldButton(
-                        "تقسيم عند موضع التشغيل"
-                    ) {
-                        splitSelectedClip()
-                    }
-
-                    OutlinedButton(
-                        onClick = {
-                            deleteSelectedClip()
-                        },
-                        enabled = selectedClip != null,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = RedColor
-                        )
-                    ) {
-                        Icon(
-                            Icons.Default.Delete,
-                            contentDescription = null
-                        )
-
-                        Spacer(Modifier.width(8.dp))
-
-                        Text("حذف المقطع المحدد")
-                    }
-                }
-            }
-
-            "الصوت" -> {
-                Panel {
-                    Text(
-                        "استوديو الصوت",
-                        color = WhiteColor,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Text(
-                        "تسجيل الصوت ومزج المسارات قيد التطوير.",
-                        color = MutedColor,
-                        fontSize = 12.sp
-                    )
-                }
-            }
-
-            "النص" -> {
-                Panel {
-                    Text(
-                        "النصوص والعناوين",
-                        color = WhiteColor
-                    )
-
-                    Text(
-                        "أدوات النصوص قيد التطوير.",
-                        color = MutedColor,
-                        fontSize = 12.sp
-                    )
-                }
-            }
-
-            "الألوان" -> {
-                Panel {
-                    Text(
-                        "تصحيح الألوان",
-                        color = WhiteColor
-                    )
-
-                    Text(
-                        "أدوات الألوان قيد التطوير.",
-                        color = MutedColor,
-                        fontSize = 12.sp
-                    )
-                }
-            }
-        }
-
-        Spacer(Modifier.height(18.dp))
-
-        // TIMELINE
-
-        SectionTitle("Timeline • الخط الزمني")
 
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp)
-                .background(
-                    PanelColor,
-                    RoundedCornerShape(12.dp)
-                )
-                .padding(12.dp)
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "V1",
-                    color = GoldColor,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Spacer(Modifier.width(8.dp))
-
-                Text(
-                    "مسار الفيديو",
-                    color = WhiteColor,
-                    fontSize = 12.sp
-                )
-
-                Spacer(Modifier.weight(1f))
-
-                Text(
-                    "${clips.size} مقطع",
-                    color = MutedColor,
-                    fontSize = 10.sp
-                )
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            if (clips.isEmpty()) {
-                Text(
-                    "لا توجد مقاطع. استورد فيديو لإضافته هنا.",
-                    color = MutedColor,
-                    fontSize = 11.sp
-                )
-            } else {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(
-                            rememberScrollState()
-                        ),
-                    horizontalArrangement =
-                        Arrangement.spacedBy(7.dp)
-                ) {
-                    clips.forEachIndexed { index, clip ->
-                        val active =
-                            clip.id == selectedClipId
-
-                        Column(
-                            modifier = Modifier
-                                .width(145.dp)
-                                .background(
-                                    if (active) {
-                                        Color(0xFF59451F)
-                                    } else {
-                                        BackgroundColor
-                                    },
-                                    RoundedCornerShape(8.dp)
-                                )
-                                .clickable {
-                                    selectedClipId = clip.id
-                                    player.seekTo(index, 0L)
-                                    player.pause()
-                                }
-                                .padding(9.dp)
-                        ) {
-                            Row(
-                                verticalAlignment =
-                                    Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    Icons.Default.Movie,
-                                    contentDescription = null,
-                                    tint = if (active) {
-                                        GoldColor
-                                    } else {
-                                        MutedColor
-                                    },
-                                    modifier = Modifier.size(17.dp)
-                                )
-
-                                Spacer(Modifier.width(5.dp))
-
-                                Text(
-                                    "Clip ${index + 1}",
-                                    color = if (active) {
-                                        GoldColor
-                                    } else {
-                                        WhiteColor
-                                    },
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-
-                            Spacer(Modifier.height(8.dp))
-
-                            Text(
-                                formatTime(clip.durationMs),
-                                color = WhiteColor,
-                                fontSize = 12.sp
-                            )
-
-                            Text(
-                                clip.name,
-                                color = MutedColor,
-                                fontSize = 9.sp,
-                                maxLines = 2
-                            )
-                        }
+            PreviewPanel(
+                player = player,
+                hasVideo = clips.isNotEmpty(),
+                playing = playing,
+                position = currentPosition,
+                duration = playerDuration,
+                onPlay = {
+                    if (clips.isNotEmpty()) {
+                        if (player.isPlaying) player.pause()
+                        else player.play()
+                    }
+                },
+                onStart = {
+                    if (clips.isNotEmpty()) player.seekTo(0L)
+                },
+                onEnd = {
+                    if (clips.isNotEmpty()) {
+                        player.seekTo(player.duration.coerceAtLeast(0L))
                     }
                 }
-            }
+            )
 
-            Spacer(Modifier.height(14.dp))
+            PageTools(
+                page = page,
+                clip = selectedClip,
+                clipCount = clips.size,
+                onImport = {
+                    picker.launch(arrayOf("video/*"))
+                },
+                onSplit = { splitClip() },
+                onDelete = { deleteClip() },
+                onStatus = { status = it }
+            )
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "A1",
-                    color = GreenColor,
-                    fontWeight = FontWeight.Bold
-                )
+            TimelinePanel(
+                clips = clips,
+                selectedId = selectedClipId,
+                position = currentPosition,
+                onSelect = { index, clip ->
+                    selectedClipId = clip.id
+                    player.seekTo(index, 0L)
+                    player.pause()
+                }
+            )
 
-                Spacer(Modifier.width(8.dp))
-
-                Text(
-                    "مسار الصوت",
-                    color = MutedColor,
-                    fontSize = 11.sp
-                )
-            }
-
-            Spacer(Modifier.height(10.dp))
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "T1",
-                    color = Color(0xFF69A9FF),
-                    fontWeight = FontWeight.Bold
-                )
-
-                Spacer(Modifier.width(8.dp))
-
-                Text(
-                    "مسار النصوص",
-                    color = MutedColor,
-                    fontSize = 11.sp
-                )
-            }
+            InspectorPanel(
+                page = page,
+                clip = selectedClip,
+                status = status
+            )
 
             Spacer(Modifier.height(12.dp))
-
-            Text(
-                statusMessage,
-                color = GreenColor,
-                fontSize = 11.sp
-            )
         }
 
-        Spacer(Modifier.height(18.dp))
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp),
-            horizontalArrangement =
-                Arrangement.spacedBy(8.dp)
-        ) {
-            ActionButton(
-                "إضافة فيديو",
-                Icons.Default.Add,
-                Modifier.weight(1f)
-            ) {
-                videoPicker.launch(arrayOf("video/*"))
-            }
-
-            ActionButton(
-                "تحرير",
-                Icons.Default.ContentCut,
-                Modifier.weight(1f)
-            ) {
-                selectedTab = "تحرير"
-            }
-
-            ActionButton(
-                "الميديا",
-                Icons.Default.Folder,
-                Modifier.weight(1f)
-            ) {
-                selectedTab = "الميديا"
-            }
-        }
-
-        Spacer(Modifier.height(18.dp))
-
-        Text(
-            "VISION STUDIO • TIMELINE V1",
-            color = MutedColor,
-            fontSize = 10.sp,
-            modifier = Modifier.align(
-                Alignment.CenterHorizontally
-            )
+        StudioBottomNavigation(
+            selected = page,
+            onSelect = { page = it }
         )
     }
 }
 
 @Composable
-fun SectionTitle(title: String) {
-    Text(
-        title,
-        color = GoldColor,
-        fontSize = 15.sp,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(
-            start = 16.dp,
-            end = 16.dp,
-            bottom = 10.dp
-        )
-    )
+private fun StudioTopBar(
+    projectName: String,
+    onProjectNameChange: (String) -> Unit
+) {
+    var editing by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(StudioPanel)
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                "VISION STUDIO",
+                color = StudioGold,
+                fontSize = 19.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 1.sp
+            )
+            if (editing) {
+                TextField(
+                    value = projectName,
+                    onValueChange = onProjectNameChange,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        color = StudioWhite,
+                        fontSize = 12.sp
+                    )
+                )
+            } else {
+                Text(
+                    projectName,
+                    color = StudioMuted,
+                    fontSize = 11.sp,
+                    modifier = Modifier.clickable { editing = true }
+                )
+            }
+        }
+
+        IconButton(onClick = { editing = !editing }) {
+            Icon(Icons.Default.Edit, "Rename project", tint = StudioGold)
+        }
+
+        IconButton(onClick = { }) {
+            Icon(Icons.Default.Settings, "Settings", tint = StudioWhite)
+        }
+    }
 }
 
 @Composable
-fun Panel(
-    content: @Composable ColumnScope.() -> Unit
+private fun PreviewPanel(
+    player: ExoPlayer,
+    hasVideo: Boolean,
+    playing: Boolean,
+    position: Long,
+    duration: Long,
+    onPlay: () -> Unit,
+    onStart: () -> Unit,
+    onEnd: () -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp)
-            .background(
-                PanelColor,
-                RoundedCornerShape(12.dp)
-            )
-            .padding(14.dp),
-        content = content
-    )
+            .padding(10.dp)
+            .background(StudioPanel, RoundedCornerShape(12.dp))
+            .padding(10.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("VIEWER", color = StudioGold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.weight(1f))
+            Text("16:9 • Preview", color = StudioMuted, fontSize = 10.sp)
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .background(Color.Black, RoundedCornerShape(8.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (hasVideo) {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { PlayerView(it).apply { useController = false } },
+                    update = { it.player = player }
+                )
+            } else {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.Movie, null, tint = StudioGold, modifier = Modifier.size(42.dp))
+                    Spacer(Modifier.height(7.dp))
+                    Text("No media loaded", color = StudioWhite, fontSize = 12.sp)
+                    Text("Import a video to start editing", color = StudioMuted, fontSize = 10.sp)
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(formatTime(position), color = StudioGold, fontSize = 11.sp)
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = onStart, enabled = hasVideo) {
+                Icon(Icons.Default.SkipPrevious, null, tint = StudioWhite)
+            }
+            IconButton(
+                onClick = onPlay,
+                enabled = hasVideo,
+                modifier = Modifier
+                    .size(42.dp)
+                    .background(StudioGold, RoundedCornerShape(50))
+            ) {
+                Icon(
+                    if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    null,
+                    tint = Color.Black
+                )
+            }
+            IconButton(onClick = onEnd, enabled = hasVideo) {
+                Icon(Icons.Default.SkipNext, null, tint = StudioWhite)
+            }
+            Spacer(Modifier.weight(1f))
+            Text(formatTime(duration), color = StudioMuted, fontSize = 11.sp)
+        }
+    }
 }
 
 @Composable
-fun GoldButton(
-    title: String,
-    onClick: () -> Unit
+private fun PageTools(
+    page: StudioPage,
+    clip: VideoClip?,
+    clipCount: Int,
+    onImport: () -> Unit,
+    onSplit: () -> Unit,
+    onDelete: () -> Unit,
+    onStatus: (String) -> Unit
 ) {
-    Button(
-        onClick = onClick,
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 5.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = GoldColor,
-            contentColor = Color.Black
-        )
+            .padding(horizontal = 10.dp)
+            .background(StudioPanel, RoundedCornerShape(12.dp))
+            .padding(12.dp)
     ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                page.title.uppercase(Locale.getDefault()),
+                color = StudioGold,
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp
+            )
+            Spacer(Modifier.weight(1f))
+            Text("$clipCount media clips", color = StudioMuted, fontSize = 10.sp)
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        when (page) {
+            StudioPage.MEDIA -> {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ToolButton("Import Video", Icons.Default.Add, Modifier.weight(1f), onImport)
+                    ToolButton("Media Library", Icons.Default.Folder, Modifier.weight(1f)) {
+                        onStatus("Imported media is listed in the timeline")
+                    }
+                }
+            }
+
+            StudioPage.CUT, StudioPage.EDIT -> {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ToolButton("Split", Icons.Default.ContentCut, Modifier.weight(1f), onSplit)
+                    ToolButton("Delete", Icons.Default.Delete, Modifier.weight(1f), onDelete, danger = true)
+                }
+                Spacer(Modifier.height(7.dp))
+                Text(
+                    clip?.name ?: "Select a clip in the timeline",
+                    color = StudioMuted,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            StudioPage.FUSION -> FeaturePlaceholder(
+                "Node-based compositing workspace",
+                "The Fusion workspace structure is reserved for future node tools."
+            )
+
+            StudioPage.COLOR -> FeaturePlaceholder(
+                "Color grading workspace",
+                "Color wheels, curves and scopes will be implemented in this module."
+            )
+
+            StudioPage.AUDIO -> FeaturePlaceholder(
+                "Audio workstation",
+                "Audio tracks, waveform editing and mixing will be implemented here."
+            )
+        }
+    }
+}
+
+@Composable
+private fun FeaturePlaceholder(title: String, description: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Default.Construction, null, tint = StudioGold)
+        Spacer(Modifier.width(9.dp))
+        Column {
+            Text(title, color = StudioWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text(description, color = StudioMuted, fontSize = 10.sp)
+        }
+    }
+}
+
+@Composable
+private fun TimelinePanel(
+    clips: List<VideoClip>,
+    selectedId: Int,
+    position: Long,
+    onSelect: (Int, VideoClip) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(10.dp)
+            .background(StudioPanel, RoundedCornerShape(12.dp))
+            .padding(10.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("TIMELINE", color = StudioGold, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            Spacer(Modifier.weight(1f))
+            Text("MULTI-TRACK EDITOR", color = StudioMuted, fontSize = 9.sp)
+        }
+
+        Spacer(Modifier.height(9.dp))
+
+        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+            repeat(9) { index ->
+                Text("${index * 5}s", color = StudioMuted, fontSize = 9.sp, modifier = Modifier.width(75.dp))
+            }
+        }
+
+        Spacer(Modifier.height(5.dp))
+
+        TimelineTrack("V1", StudioGold, "MAIN VIDEO", clips, selectedId, onSelect)
+        TimelineTrack("V2", StudioBlue, "OVERLAY", emptyList(), -1) { _, _ -> }
+        TimelineTrack("A1", StudioGreen, "AUDIO", emptyList(), -1) { _, _ -> }
+        TimelineTrack("T1", StudioPurple, "TEXT", emptyList(), -1) { _, _ -> }
+
+        Spacer(Modifier.height(7.dp))
+        Text("Playhead: ${formatTime(position)}", color = StudioMuted, fontSize = 10.sp)
+    }
+}
+
+@Composable
+private fun TimelineTrack(
+    label: String,
+    color: Color,
+    description: String,
+    clips: List<VideoClip>,
+    selectedId: Int,
+    onSelect: (Int, VideoClip) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(
+            modifier = Modifier
+                .width(48.dp)
+                .height(48.dp)
+                .background(StudioPanel2, RoundedCornerShape(6.dp)),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(label, color = color, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            Text(description, color = StudioMuted, fontSize = 6.sp)
+        }
+
+        Spacer(Modifier.width(6.dp))
+
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .height(48.dp)
+                .horizontalScroll(rememberScrollState())
+                .background(StudioBg, RoundedCornerShape(6.dp))
+                .padding(3.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            if (clips.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(190.dp)
+                        .border(1.dp, StudioPanel2, RoundedCornerShape(5.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Empty track", color = StudioMuted, fontSize = 9.sp)
+                }
+            } else {
+                clips.forEachIndexed { index, clip ->
+                    val active = clip.id == selectedId
+                    Column(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .width((clip.durationMs / 1000f * 8f).coerceIn(85f, 220f).dp)
+                            .background(
+                                if (active) Color(0xFF59451F) else Color(0xFF34302A),
+                                RoundedCornerShape(5.dp)
+                            )
+                            .border(
+                                if (active) 1.5.dp else 0.dp,
+                                if (active) StudioGold else Color.Transparent,
+                                RoundedCornerShape(5.dp)
+                            )
+                            .clickable { onSelect(index, clip) }
+                            .padding(5.dp),
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            "CLIP ${index + 1}",
+                            color = if (active) StudioGold else StudioWhite,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
+                        )
+                        Text(formatTime(clip.durationMs), color = StudioMuted, fontSize = 8.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InspectorPanel(
+    page: StudioPage,
+    clip: VideoClip?,
+    status: String
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp)
+            .background(StudioPanel, RoundedCornerShape(12.dp))
+            .padding(12.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Tune, null, tint = StudioGold, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(7.dp))
+            Text("INSPECTOR", color = StudioGold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.weight(1f))
+            Text(page.title, color = StudioMuted, fontSize = 10.sp)
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        if (clip == null) {
+            Text("Select an item to inspect its properties", color = StudioMuted, fontSize = 10.sp)
+        } else {
+            Text(clip.name, color = StudioWhite, fontSize = 11.sp, maxLines = 1)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Source range: ${formatTime(clip.startMs)} – ${formatTime(clip.endMs)}",
+                color = StudioMuted,
+                fontSize = 10.sp
+            )
+        }
+
+        Spacer(Modifier.height(8.dp))
+        HorizontalDivider(color = StudioPanel2)
+        Spacer(Modifier.height(7.dp))
+        Text(status, color = StudioGreen, fontSize = 10.sp)
+    }
+}
+
+@Composable
+private fun ToolButton(
+    title: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    danger: Boolean = false
+) {
+    Row(
+        modifier = modifier
+            .background(
+                if (danger) Color(0xFF382126) else StudioPanel2,
+                RoundedCornerShape(8.dp)
+            )
+            .clickable { onClick() }
+            .padding(horizontal = 9.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = if (danger) StudioRed else StudioGold,
+            modifier = Modifier.size(16.dp)
+        )
+        Spacer(Modifier.width(6.dp))
         Text(
             title,
+            color = if (danger) StudioRed else StudioWhite,
+            fontSize = 10.sp,
             fontWeight = FontWeight.Bold
         )
     }
 }
 
 @Composable
-fun ActionButton(
-    title: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
+private fun StudioBottomNavigation(
+    selected: StudioPage,
+    onSelect: (StudioPage) -> Unit
 ) {
-    Column(
-        modifier = modifier
-            .background(
-                PanelColor,
-                RoundedCornerShape(10.dp)
-            )
-            .clickable {
-                onClick()
-            }
-            .padding(vertical = 12.dp),
-        horizontalAlignment =
-            Alignment.CenterHorizontally
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF111318))
+            .padding(horizontal = 3.dp, vertical = 7.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly
     ) {
-        Icon(
-            icon,
-            contentDescription = null,
-            tint = GoldColor
-        )
-
-        Spacer(Modifier.height(5.dp))
-
-        Text(
-            title,
-            color = WhiteColor,
-            fontSize = 10.sp
-        )
+        StudioPage.values().forEach { item ->
+            val active = selected == item
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { onSelect(item) }
+                    .padding(vertical = 3.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    item.icon,
+                    contentDescription = item.title,
+                    tint = if (active) StudioGold else StudioMuted,
+                    modifier = Modifier.size(21.dp)
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    item.title,
+                    color = if (active) StudioGold else StudioMuted,
+                    fontSize = 9.sp,
+                    fontWeight = if (active) FontWeight.Bold else FontWeight.Normal
+                )
+                if (active) {
+                    Spacer(Modifier.height(3.dp))
+                    Box(
+                        Modifier
+                            .width(20.dp)
+                            .height(2.dp)
+                            .background(StudioGold, RoundedCornerShape(2.dp))
+                    )
+                }
+            }
+        }
     }
 }
 
-fun formatTime(milliseconds: Long): String {
-    val totalSeconds = milliseconds / 1000
-    val minutes = totalSeconds / 60
-    val seconds = totalSeconds % 60
-
-    return String.format(
-        Locale.getDefault(),
-        "%02d:%02d",
-        minutes,
-        seconds
-    )
+private fun formatTime(milliseconds: Long): String {
+    val total = milliseconds.coerceAtLeast(0L) / 1000L
+    val minutes = total / 60L
+    val seconds = total % 60L
+    return String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
 }
