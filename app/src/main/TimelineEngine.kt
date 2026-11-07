@@ -15,15 +15,34 @@ object TimelineEngine {
 
     // إنشاء المسارات الافتراضية
     fun createDefaultTracks(): List<TimelineTrack> {
-        return listOf(
-            TimelineTrack("V1 - Main Video", TimelineTrackType.VIDEO, 0),
-            TimelineTrack("V2 - Overlay Video", TimelineTrackType.VIDEO, 1),
-            TimelineTrack("A1 - Main Audio", TimelineTrackType.AUDIO, 2),
-            TimelineTrack("A2 - Music", TimelineTrackType.AUDIO, 3),
-            TimelineTrack("T1 - Titles", TimelineTrackType.TEXT, 4)
+    return listOf(
+        TimelineTrack(
+            name = "V1 - Main Video",
+            type = TimelineTrackType.VIDEO,
+            index = 0
+        ),
+        TimelineTrack(
+            name = "V2 - Overlay Video",
+            type = TimelineTrackType.VIDEO,
+            index = 1
+        ),
+        TimelineTrack(
+            name = "A1 - Main Audio",
+            type = TimelineTrackType.AUDIO,
+            index = 2
+        ),
+        TimelineTrack(
+            name = "A2 - Music",
+            type = TimelineTrackType.AUDIO,
+            index = 3
+        ),
+        TimelineTrack(
+            name = "T1 - Titles",
+            type = TimelineTrackType.TEXT,
+            index = 4
         )
-    }
-
+    )
+}
     // إضافة مسار
     fun addTrack(
         state: TimelineState,
