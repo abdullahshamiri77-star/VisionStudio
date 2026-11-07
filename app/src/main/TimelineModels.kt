@@ -3,7 +3,11 @@ package com.visionstudio.app
 
 import java.util.UUID
 
-// أنواع المسارات داخل الخط الزمني
+// =====================================================
+// VISION STUDIO - TIMELINE CORE MODELS
+// =====================================================
+
+// أنواع المسارات
 enum class TimelineTrackType {
     VIDEO,
     AUDIO,
@@ -11,15 +15,43 @@ enum class TimelineTrackType {
     EFFECT
 }
 
-// إعدادات المشروع
+// =====================================================
+// إعدادات المشروع والتوقيت
+// =====================================================
+
 data class TimelineProjectSettings(
     val width: Int = 1920,
     val height: Int = 1080,
     val frameRate: Int = 30,
     val audioSampleRate: Int = 48000
-)
+) {
+    init {
+        require(width > 0 && height > 0)
+        require(frameRate > 0)
+        require(audioSampleRate > 0)
+    }
 
-// المسار داخل المشروع
+    // تحويل إطار إلى مللي ثانية
+    fun frameToMs(frame: Long): Long {
+        return (frame * 1000L) / frameRate
+    }
+
+    // تحويل مللي ثانية إلى إطار
+    fun msToFrame(timeMs: Long): Long {
+        return (timeMs * frameRate) / 1000L
+    }
+
+    // تقريب الوقت إلى أقرب إطار
+    fun snapToFrame(timeMs: Long): Long {
+        val frame = ((timeMs * frameRate + 500L) / 1000L)
+        return frameToMs(frame)
+    }
+}
+
+// =====================================================
+// المسارات
+// =====================================================
+
 data class TimelineTrack(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
@@ -31,7 +63,10 @@ data class TimelineTrack(
     val volume: Float = 1f
 )
 
-// الخصائص المشتركة للمقاطع
+// =====================================================
+// الواجهة المشتركة للمقاطع
+// =====================================================
+
 interface TimelineItem {
     val id: String
     val trackId: String
@@ -42,7 +77,10 @@ interface TimelineItem {
         get() = positionMs + durationMs
 }
 
-// مقطع فيديو
+// =====================================================
+// مقاطع الفيديو
+// =====================================================
+
 data class TimelineVideoClip(
     override val id: String = UUID.randomUUID().toString(),
     override val trackId: String,
@@ -55,9 +93,21 @@ data class TimelineVideoClip(
     val speed: Float = 1f,
     val volume: Float = 1f,
     val isEnabled: Boolean = true
-) : TimelineItem
+) : TimelineItem {
 
-// مقطع صوتي
+    init {
+        require(positionMs >= 0L)
+        require(durationMs > 0L)
+        require(sourceStartMs >= 0L)
+        require(sourceEndMs >= sourceStartMs)
+        require(speed > 0f)
+    }
+}
+
+// =====================================================
+// مقاطع الصوت
+// =====================================================
+
 data class TimelineAudioClip(
     override val id: String = UUID.randomUUID().toString(),
     override val trackId: String,
@@ -71,9 +121,22 @@ data class TimelineAudioClip(
     val fadeInMs: Long = 0L,
     val fadeOutMs: Long = 0L,
     val isEnabled: Boolean = true
-) : TimelineItem
+) : TimelineItem {
 
-// مقطع عنوان أو نص
+    init {
+        require(positionMs >= 0L)
+        require(durationMs > 0L)
+        require(sourceStartMs >= 0L)
+        require(sourceEndMs >= sourceStartMs)
+        require(fadeInMs >= 0L)
+        require(fadeOutMs >= 0L)
+    }
+}
+
+// =====================================================
+// مقاطع النص والعناوين
+// =====================================================
+
 data class TimelineTextClip(
     override val id: String = UUID.randomUUID().toString(),
     override val trackId: String,
@@ -84,9 +147,19 @@ data class TimelineTextClip(
     val color: Long = 0xFFFFFFFF,
     val positionX: Float = 0.5f,
     val positionY: Float = 0.5f
-) : TimelineItem
+) : TimelineItem {
 
-// أنواع الانتقالات
+    init {
+        require(positionMs >= 0L)
+        require(durationMs > 0L)
+        require(fontSize > 0f)
+    }
+}
+
+// =====================================================
+// الانتقالات
+// =====================================================
+
 enum class TransitionType {
     DISSOLVE,
     FADE,
@@ -95,16 +168,22 @@ enum class TransitionType {
     ZOOM
 }
 
-// الانتقالات بين المقاطع
 data class TimelineTransition(
     val id: String = UUID.randomUUID().toString(),
     val fromClipId: String,
     val toClipId: String,
     val type: TransitionType = TransitionType.DISSOLVE,
     val durationMs: Long = 500L
-)
+) {
+    init {
+        require(durationMs > 0L)
+    }
+}
 
-// أنواع خصائص الحركة
+// =====================================================
+// Keyframes - التحكم بالحركة
+// =====================================================
+
 enum class KeyframeProperty {
     POSITION_X,
     POSITION_Y,
@@ -114,16 +193,22 @@ enum class KeyframeProperty {
     VOLUME
 }
 
-// نقطة تحكم للحركة
 data class TimelineKeyframe(
     val id: String = UUID.randomUUID().toString(),
     val clipId: String,
     val timeMs: Long,
     val property: KeyframeProperty,
     val value: Float
-)
+) {
+    init {
+        require(timeMs >= 0L)
+    }
+}
 
+// =====================================================
 // حالة الخط الزمني
+// =====================================================
+
 data class TimelineState(
     val tracks: List<TimelineTrack> = emptyList(),
     val videoClips: List<TimelineVideoClip> = emptyList(),
@@ -132,12 +217,20 @@ data class TimelineState(
     val transitions: List<TimelineTransition> = emptyList(),
     val keyframes: List<TimelineKeyframe> = emptyList(),
     val playheadMs: Long = 0L,
-    val settings: TimelineProjectSettings = TimelineProjectSettings()
+    val settings: TimelineProjectSettings =
+        TimelineProjectSettings()
 ) {
+
     val durationMs: Long
         get() = maxOf(
             videoClips.maxOfOrNull { it.endMs } ?: 0L,
             audioClips.maxOfOrNull { it.endMs } ?: 0L,
             textClips.maxOfOrNull { it.endMs } ?: 0L
         )
+
+    val durationFrames: Long
+        get() = settings.msToFrame(durationMs)
+
+    val playheadFrame: Long
+        get() = settings.msToFrame(playheadMs)
 }
