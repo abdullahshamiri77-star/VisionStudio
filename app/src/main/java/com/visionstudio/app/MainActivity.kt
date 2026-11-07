@@ -34,8 +34,6 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 
 private val BackgroundColor = Color(0xFF101114)
@@ -49,7 +47,6 @@ private val RedColor = Color(0xFFFF6262)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         setContent {
             MaterialTheme {
                 VisionStudioApp()
@@ -72,8 +69,11 @@ fun VisionStudioApp() {
     var recording by remember { mutableStateOf(false) }
     var recordedFile by remember { mutableStateOf<File?>(null) }
     var audioPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+    var audioRecorder by remember { mutableStateOf<MediaRecorder?>(null) }
     var isAudioPlaying by remember { mutableStateOf(false) }
-    var recordingMessage by remember { mutableStateOf("جاهز لتسجيل الصوت") }
+    var recordingMessage by remember {
+        mutableStateOf("جاهز لتسجيل الصوت")
+    }
 
     val mediaList = remember { mutableStateListOf<String>() }
 
@@ -82,7 +82,7 @@ fun VisionStudioApp() {
     }
 
     val videoPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
+        ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
             try {
@@ -95,10 +95,10 @@ fun VisionStudioApp() {
 
             videoUri = uri
             videoTitle = uri.lastPathSegment ?: "Video"
+
             player.setMediaItem(MediaItem.fromUri(uri))
             player.prepare()
             player.pause()
-            isPlaying = false
 
             if (!mediaList.contains(videoTitle)) {
                 mediaList.add(videoTitle)
@@ -110,10 +110,10 @@ fun VisionStudioApp() {
         rememberLauncherForActivityResult(
             ActivityResultContracts.RequestPermission()
         ) { granted ->
-            if (granted) {
-                recordingMessage = "تم السماح باستخدام الميكروفون"
+            recordingMessage = if (granted) {
+                "تم السماح باستخدام الميكروفون"
             } else {
-                recordingMessage = "يجب السماح باستخدام الميكروفون للتسجيل"
+                "يجب السماح باستخدام الميكروفون للتسجيل"
             }
         }
 
@@ -133,14 +133,20 @@ fun VisionStudioApp() {
         onDispose {
             player.removeListener(listener)
             player.release()
+
             try {
                 audioPlayer?.release()
+            } catch (_: Exception) {
+            }
+
+            try {
+                audioRecorder?.release()
             } catch (_: Exception) {
             }
         }
     }
 
-    LaunchedEffect(isPlaying, videoUri) {
+    LaunchedEffect(player) {
         while (true) {
             currentPosition = player.currentPosition.coerceAtLeast(0L)
             duration = player.duration.coerceAtLeast(0L)
@@ -188,10 +194,9 @@ fun VisionStudioApp() {
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // Preview title
         SectionTitle("معاينة الفيديو")
 
-        // Video preview
+        // Video Preview
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -201,21 +206,17 @@ fun VisionStudioApp() {
             contentAlignment = Alignment.Center
         ) {
             if (videoUri != null) {
-                AndroidViewAndroidView(
-    modifier = Modifier.fillMaxSize(),
-    factory = { viewContext ->
-        PlayerView(viewContext).apply {
-            useController = true
-        }
-    },
-    update = { view ->
-        view.player = player
-    }
-)
-    update = { view ->
-        view.player = player
-    }
-)
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { viewContext ->
+                        PlayerView(viewContext).apply {
+                            useController = true
+                        }
+                    },
+                    update = { view ->
+                        view.player = player
+                    }
+                )
             } else {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally
@@ -226,12 +227,15 @@ fun VisionStudioApp() {
                         tint = GoldColor,
                         modifier = Modifier.size(48.dp)
                     )
+
                     Spacer(modifier = Modifier.height(10.dp))
+
                     Text(
                         text = "اختر فيديو لبدء العمل",
                         color = WhiteColor,
                         fontSize = 14.sp
                     )
+
                     Text(
                         text = "مساحة معاينة المشروع",
                         color = MutedColor,
@@ -250,7 +254,7 @@ fun VisionStudioApp() {
             modifier = Modifier.padding(horizontal = 16.dp)
         )
 
-        // Playback controls
+        // Playback Controls
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -259,9 +263,8 @@ fun VisionStudioApp() {
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
-                onClick = {
-                    player.seekTo(0)
-                }
+                onClick = { player.seekTo(0L) },
+                enabled = videoUri != null
             ) {
                 Icon(
                     Icons.Default.SkipPrevious,
@@ -280,6 +283,7 @@ fun VisionStudioApp() {
                         }
                     }
                 },
+                enabled = videoUri != null,
                 modifier = Modifier
                     .background(GoldColor, RoundedCornerShape(50))
                     .size(52.dp)
@@ -298,8 +302,9 @@ fun VisionStudioApp() {
 
             IconButton(
                 onClick = {
-                    player.seekTo(duration)
-                }
+                    if (duration > 0L) player.seekTo(duration)
+                },
+                enabled = videoUri != null
             ) {
                 Icon(
                     Icons.Default.SkipNext,
@@ -318,7 +323,6 @@ fun VisionStudioApp() {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Main tabs
         SectionTitle("أدوات التحرير")
 
         val tabs = listOf(
@@ -346,9 +350,7 @@ fun VisionStudioApp() {
                             if (active) GoldColor else PanelColor,
                             RoundedCornerShape(8.dp)
                         )
-                        .clickable {
-                            selectedTab = tab
-                        }
+                        .clickable { selectedTab = tab }
                         .padding(vertical = 11.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -364,9 +366,7 @@ fun VisionStudioApp() {
 
         Spacer(modifier = Modifier.height(15.dp))
 
-        // Selected panel
         when (selectedTab) {
-
             "الميديا" -> {
                 MediaPanel(
                     mediaList = mediaList,
@@ -387,7 +387,7 @@ fun VisionStudioApp() {
             "النص" -> {
                 ComingSoonPanel(
                     title = "أدوات النصوص",
-                    description = "سيتم إضافة النصوص والعناوين والتحكم بالخط والحجم واللون."
+                    description = "إضافة النصوص والعناوين والتحكم بالخط والحجم واللون."
                 )
             }
 
@@ -403,14 +403,17 @@ fun VisionStudioApp() {
                             Manifest.permission.RECORD_AUDIO
                         ) == PackageManager.PERMISSION_GRANTED
 
-                        if (granted) {
+                        if (!granted) {
+                            audioPermissionLauncher.launch(
+                                Manifest.permission.RECORD_AUDIO
+                            )
+                        } else {
                             try {
-                                val folder = context.getExternalFilesDir("Recordings")
-                                    ?: context.filesDir
+                                val folder =
+                                    context.getExternalFilesDir("Recordings")
+                                        ?: context.filesDir
 
-                                if (!folder.exists()) {
-                                    folder.mkdirs()
-                                }
+                                if (!folder.exists()) folder.mkdirs()
 
                                 val file = File(
                                     folder,
@@ -443,10 +446,6 @@ fun VisionStudioApp() {
                                 recordingMessage =
                                     "تعذر بدء التسجيل: ${e.message}"
                             }
-                        } else {
-                            audioPermissionLauncher.launch(
-                                Manifest.permission.RECORD_AUDIO
-                            )
                         }
                     },
                     onStopRecording = {
@@ -456,7 +455,12 @@ fun VisionStudioApp() {
                             audioRecorder = null
                             recording = false
                             recordingMessage = "تم حفظ التسجيل بنجاح"
-                        } catch (e: Exception) {
+                        } catch (_: Exception) {
+                            try {
+                                audioRecorder?.release()
+                            } catch (_: Exception) {
+                            }
+                            audioRecorder = null
                             recording = false
                             recordingMessage = "تعذر حفظ التسجيل"
                         }
@@ -472,6 +476,7 @@ fun VisionStudioApp() {
                                     setDataSource(file.absolutePath)
                                     prepare()
                                     start()
+
                                     setOnCompletionListener {
                                         isAudioPlaying = false
                                     }
@@ -479,7 +484,7 @@ fun VisionStudioApp() {
 
                                 isAudioPlaying = true
                                 recordingMessage = "جاري تشغيل التسجيل"
-                            } catch (e: Exception) {
+                            } catch (_: Exception) {
                                 recordingMessage = "تعذر تشغيل التسجيل"
                                 isAudioPlaying = false
                             }
@@ -488,11 +493,15 @@ fun VisionStudioApp() {
                     onStopPlayback = {
                         try {
                             audioPlayer?.stop()
-                            audioPlayer?.release()
-                            audioPlayer = null
                         } catch (_: Exception) {
                         }
 
+                        try {
+                            audioPlayer?.release()
+                        } catch (_: Exception) {
+                        }
+
+                        audioPlayer = null
                         isAudioPlaying = false
                         recordingMessage = "تم إيقاف تشغيل التسجيل"
                     }
@@ -502,21 +511,20 @@ fun VisionStudioApp() {
             "التأثيرات" -> {
                 ComingSoonPanel(
                     title = "المؤثرات البصرية",
-                    description = "سيتم إضافة المؤثرات والانتقالات والتحكم بطبقات الفيديو."
+                    description = "المؤثرات والانتقالات والتحكم بطبقات الفيديو."
                 )
             }
 
             "الألوان" -> {
                 ComingSoonPanel(
                     title = "تصحيح الألوان",
-                    description = "سيتم إضافة أدوات السطوع والتباين والتشبع ودرجات الألوان."
+                    description = "السطوع والتباين والتشبع ودرجات الألوان."
                 )
             }
         }
 
         Spacer(modifier = Modifier.height(18.dp))
 
-        // Timeline
         SectionTitle("الخط الزمني للمشروع")
 
         Column(
@@ -536,7 +544,7 @@ fun VisionStudioApp() {
 
             Text(
                 text = "الخط الزمني الحالي للعرض والتنظيم الأولي. " +
-                        "تحرير المقاطع الفعلي قيد التطوير.",
+                    "تحرير المقاطع الفعلي قيد التطوير.",
                 color = MutedColor,
                 fontSize = 10.sp
             )
@@ -544,7 +552,6 @@ fun VisionStudioApp() {
 
         Spacer(modifier = Modifier.height(18.dp))
 
-        // Bottom actions
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -564,34 +571,27 @@ fun VisionStudioApp() {
                 title = "الصوت",
                 icon = Icons.Default.Mic,
                 modifier = Modifier.weight(1f),
-                onClick = {
-                    selectedTab = "الصوت"
-                }
+                onClick = { selectedTab = "الصوت" }
             )
 
             ActionButton(
                 title = "الميديا",
                 icon = Icons.Default.Folder,
                 modifier = Modifier.weight(1f),
-                onClick = {
-                    selectedTab = "الميديا"
-                }
+                onClick = { selectedTab = "الميديا" }
             )
         }
 
         Spacer(modifier = Modifier.height(12.dp))
 
         Text(
-            text = "VISION STUDIO  •  VERSION 0.2",
+            text = "VISION STUDIO • VERSION 0.2",
             color = MutedColor,
             fontSize = 10.sp,
             modifier = Modifier.align(Alignment.CenterHorizontally)
         )
     }
 }
-
-// Recorder reference
-private var audioRecorder: MediaRecorder? = null
 
 @Composable
 fun SectionTitle(title: String) {
@@ -678,9 +678,7 @@ fun MediaPanel(
 }
 
 @Composable
-fun EditingPanel(
-    onImport: () -> Unit
-) {
+fun EditingPanel(onImport: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
