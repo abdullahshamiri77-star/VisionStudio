@@ -201,14 +201,17 @@ fun VisionStudioApp() {
             contentAlignment = Alignment.Center
         ) {
             if (videoUri != null) {
-                AndroidView(
+                AndroidViewAndroidView(
     modifier = Modifier.fillMaxSize(),
     factory = { viewContext ->
         PlayerView(viewContext).apply {
             useController = true
-            player = null
         }
     },
+    update = { view ->
+        view.player = player
+    }
+)
     update = { view ->
         view.player = player
     }
