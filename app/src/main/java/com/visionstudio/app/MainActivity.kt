@@ -36,19 +36,12 @@ import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
 import java.util.Locale
 
-
-
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         setContent {
-            MaterialTheme(
-                colorScheme = darkColorScheme(
-                    background = StudioBg,
-                    surface = StudioPanel,
-                    primary = StudioGold
-                )
-            ) {
+            VisionStudioTheme {
                 VisionStudioApp()
             }
         }
