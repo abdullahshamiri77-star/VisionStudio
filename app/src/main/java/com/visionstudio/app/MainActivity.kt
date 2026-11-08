@@ -327,8 +327,9 @@ var activeProject by remember { mutableStateOf<Project?>(null) }
 @Composable
 private fun StudioTopBar(
     projectName: String,
-    onProjectNameChange: (String) -> Unit
-) {
+    onProjectNameChange: (String) -> Unit,
+    onHome: () -> Unit
+)
     var editing by remember { mutableStateOf(false) }
 
     Row(
