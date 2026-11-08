@@ -34,7 +34,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
 import java.util.Locale
-
+import com.visionstudio.app.core.project.Project
+import com.visionstudio.app.core.project.ProjectHomeScreen
+import com.visionstudio.app.core.project.ProjectManager
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,7 +52,10 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun VisionStudioApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
+val projectManager = remember { ProjectManager(context) }
 
+var showProjectHome by remember { mutableStateOf(true) }
+var activeProject by remember { mutableStateOf<Project?>(null) }
     var page by remember { mutableStateOf(StudioPage.EDIT) }
     var projectName by remember { mutableStateOf("Untitled Project") }
     var status by remember { mutableStateOf("Ready • Import media to begin") }
