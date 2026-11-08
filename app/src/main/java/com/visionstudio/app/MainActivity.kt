@@ -234,6 +234,16 @@ var activeProject by remember { mutableStateOf<Project?>(null) }
         }
     }
 
+    if (showProjectHome) {
+    ProjectHomeScreen(
+        onOpenProject = { project ->
+            activeProject = project
+            projectName = project.name
+            showProjectHome = false
+            status = "Project opened: ${project.name}"
+        }
+    )
+} else {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -241,7 +251,11 @@ var activeProject by remember { mutableStateOf<Project?>(null) }
     ) {
         StudioTopBar(
             projectName = projectName,
-            onProjectNameChange = { projectName = it }
+            onProjectNameChange = { projectName = it },
+            onHome = {
+                player.pause()
+                showProjectHome = true
+            }
         )
 
         Column(
