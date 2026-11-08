@@ -1,6 +1,5 @@
 
 package com.visionstudio.app
-
 import android.content.Intent
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -571,11 +570,10 @@ private fun TimelinePanel(
         }
 
         Spacer(Modifier.height(5.dp))
-
-        TimelineTrack("V1", StudioGold, "MAIN VIDEO", clips, selectedId, onSelect)
-        TimelineTrack("V2", StudioBlue, "OVERLAY", emptyList(), -1) { _, _ -> }
-        TimelineTrack("A1", StudioGreen, "AUDIO", emptyList(), -1) { _, _ -> }
-        TimelineTrack("T1", StudioPurple, "TEXT", emptyList(), -1) { _, _ -> }
+TimelineTrackRow("V1", StudioGold, "MAIN VIDEO", clips, selectedId, onSelect)
+TimelineTrackRow("V2", StudioBlue, "OVERLAY", emptyList(), -1) { _, _ -> }
+TimelineTrackRow("A1", StudioGreen, "AUDIO", emptyList(), -1) { _, _ -> }
+TimelineTrackRow("T1", StudioPurple, "TEXT", emptyList(), -1) { _, _ -> }
 
         Spacer(Modifier.height(7.dp))
         Text("Playhead: ${formatTime(position)}", color = StudioMuted, fontSize = 10.sp)
@@ -583,7 +581,7 @@ private fun TimelinePanel(
 }
 
 @Composable
-private fun TimelineTrack(
+private fun TimelineTrackRow(
     label: String,
     color: Color,
     description: String,
