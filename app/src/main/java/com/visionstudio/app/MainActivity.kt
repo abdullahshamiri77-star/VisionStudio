@@ -1,5 +1,6 @@
 
 package com.visionstudio.app
+
 import android.content.Intent
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -36,7 +37,7 @@ import kotlinx.coroutines.delay
 import java.util.Locale
 import com.visionstudio.app.core.project.Project
 import com.visionstudio.app.core.project.ProjectHomeScreen
-import com.visionstudio.app.core.project.ProjectManager
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -52,10 +53,10 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun VisionStudioApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
-val projectManager = remember { ProjectManager(context) }
 
-var showProjectHome by remember { mutableStateOf(true) }
-var activeProject by remember { mutableStateOf<Project?>(null) }
+    var showProjectHome by remember { mutableStateOf(true) }
+    var activeProject by remember { mutableStateOf<Project?>(null) }
+
     var page by remember { mutableStateOf(StudioPage.EDIT) }
     var projectName by remember { mutableStateOf("Untitled Project") }
     var status by remember { mutableStateOf("Ready • Import media to begin") }
@@ -110,6 +111,7 @@ var activeProject by remember { mutableStateOf<Project?>(null) }
         try {
             val retriever = MediaMetadataRetriever()
             val length: Long
+
             try {
                 retriever.setDataSource(context, uri)
                 length = retriever.extractMetadata(
@@ -125,6 +127,7 @@ var activeProject by remember { mutableStateOf<Project?>(null) }
             }
 
             val name = uri.lastPathSegment ?: "Video ${nextId}"
+
             val clip = VideoClip(
                 id = nextId++,
                 uri = uri,
@@ -138,6 +141,7 @@ var activeProject by remember { mutableStateOf<Project?>(null) }
             rebuildPlaylist(clips.lastIndex)
             status = "Media added to timeline"
             page = StudioPage.EDIT
+
         } catch (e: Exception) {
             status = "Import failed: ${e.message}"
         }
@@ -151,6 +155,7 @@ var activeProject by remember { mutableStateOf<Project?>(null) }
 
     fun splitClip() {
         val index = clips.indexOfFirst { it.id == selectedClipId }
+
         if (index < 0) {
             status = "Select a clip first"
             return
@@ -182,6 +187,7 @@ var activeProject by remember { mutableStateOf<Project?>(null) }
 
     fun deleteClip() {
         val index = clips.indexOfFirst { it.id == selectedClipId }
+
         if (index < 0) {
             status = "Select a clip to delete"
             return
@@ -203,6 +209,7 @@ var activeProject by remember { mutableStateOf<Project?>(null) }
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
+
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 playing = isPlaying
             }
@@ -220,6 +227,7 @@ var activeProject by remember { mutableStateOf<Project?>(null) }
         }
 
         player.addListener(listener)
+
         onDispose {
             player.removeListener(listener)
             player.release()
@@ -235,92 +243,93 @@ var activeProject by remember { mutableStateOf<Project?>(null) }
     }
 
     if (showProjectHome) {
-    ProjectHomeScreen(
-        onOpenProject = { project ->
-            activeProject = project
-            projectName = project.name
-            showProjectHome = false
-            status = "Project opened: ${project.name}"
-        }
-    )
-} else {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(StudioBg)
-    ) {
-        StudioTopBar(
-            projectName = projectName,
-            onProjectNameChange = { projectName = it },
-            onHome = {
-                player.pause()
-                showProjectHome = true
+        ProjectHomeScreen(
+            onOpenProject = { project ->
+                activeProject = project
+                projectName = project.name
+                showProjectHome = false
+                status = "Project opened: ${project.name}"
             }
         )
-
+    } else {
         Column(
             modifier = Modifier
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
+                .fillMaxSize()
+                .background(StudioBg)
         ) {
-            PreviewPanel(
-                player = player,
-                hasVideo = clips.isNotEmpty(),
-                playing = playing,
-                position = currentPosition,
-                duration = playerDuration,
-                onPlay = {
-                    if (clips.isNotEmpty()) {
-                        if (player.isPlaying) player.pause()
-                        else player.play()
-                    }
-                },
-                onStart = {
-                    if (clips.isNotEmpty()) player.seekTo(0L)
-                },
-                onEnd = {
-                    if (clips.isNotEmpty()) {
-                        player.seekTo(player.duration.coerceAtLeast(0L))
-                    }
-                }
-            )
-
-            PageTools(
-                page = page,
-                clip = selectedClip,
-                clipCount = clips.size,
-                onImport = {
-                    picker.launch(arrayOf("video/*"))
-                },
-                onSplit = { splitClip() },
-                onDelete = { deleteClip() },
-                onStatus = { status = it }
-            )
-
-            TimelinePanel(
-                clips = clips,
-                selectedId = selectedClipId,
-                position = currentPosition,
-                onSelect = { index, clip ->
-                    selectedClipId = clip.id
-                    player.seekTo(index, 0L)
+            StudioTopBar(
+                projectName = projectName,
+                onProjectNameChange = { projectName = it },
+                onHome = {
                     player.pause()
+                    showProjectHome = true
                 }
             )
 
-            InspectorPanel(
-                page = page,
-                clip = selectedClip,
-                status = status
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                PreviewPanel(
+                    player = player,
+                    hasVideo = clips.isNotEmpty(),
+                    playing = playing,
+                    position = currentPosition,
+                    duration = playerDuration,
+                    onPlay = {
+                        if (clips.isNotEmpty()) {
+                            if (player.isPlaying) player.pause()
+                            else player.play()
+                        }
+                    },
+                    onStart = {
+                        if (clips.isNotEmpty()) player.seekTo(0L)
+                    },
+                    onEnd = {
+                        if (clips.isNotEmpty()) {
+                            player.seekTo(player.duration.coerceAtLeast(0L))
+                        }
+                    }
+                )
+
+                PageTools(
+                    page = page,
+                    clip = selectedClip,
+                    clipCount = clips.size,
+                    onImport = {
+                        picker.launch(arrayOf("video/*"))
+                    },
+                    onSplit = { splitClip() },
+                    onDelete = { deleteClip() },
+                    onStatus = { status = it }
+                )
+
+                TimelinePanel(
+                    clips = clips,
+                    selectedId = selectedClipId,
+                    position = currentPosition,
+                    onSelect = { index, clip ->
+                        selectedClipId = clip.id
+                        player.seekTo(index, 0L)
+                        player.pause()
+                    }
+                )
+
+                InspectorPanel(
+                    page = page,
+                    clip = selectedClip,
+                    status = status
+                )
+
+                Spacer(Modifier.height(12.dp))
+            }
+
+            StudioBottomNavigation(
+                selected = page,
+                onSelect = { page = it }
             )
-
-            Spacer(Modifier.height(12.dp))
         }
-
-        StudioBottomNavigation(
-            selected = page,
-            onSelect = { page = it }
-        )
     }
 }
 
@@ -347,6 +356,7 @@ private fun StudioTopBar(
                 fontWeight = FontWeight.ExtraBold,
                 letterSpacing = 1.sp
             )
+
             if (editing) {
                 TextField(
                     value = projectName,
@@ -369,11 +379,27 @@ private fun StudioTopBar(
         }
 
         IconButton(onClick = { editing = !editing }) {
-            Icon(Icons.Default.Edit, "Rename project", tint = StudioGold)
+            Icon(
+                Icons.Default.Edit,
+                contentDescription = "Rename project",
+                tint = StudioGold
+            )
+        }
+
+        IconButton(onClick = onHome) {
+            Icon(
+                Icons.Default.Folder,
+                contentDescription = "Projects",
+                tint = StudioGold
+            )
         }
 
         IconButton(onClick = { }) {
-            Icon(Icons.Default.Settings, "Settings", tint = StudioWhite)
+            Icon(
+                Icons.Default.Settings,
+                contentDescription = "Settings",
+                tint = StudioWhite
+            )
         }
     }
 }
@@ -397,7 +423,12 @@ private fun PreviewPanel(
             .padding(10.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("VIEWER", color = StudioGold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text(
+                "VIEWER",
+                color = StudioGold,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
             Spacer(Modifier.weight(1f))
             Text("16:9 • Preview", color = StudioMuted, fontSize = 10.sp)
         }
@@ -414,15 +445,26 @@ private fun PreviewPanel(
             if (hasVideo) {
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
-                    factory = { PlayerView(it).apply { useController = false } },
+                    factory = {
+                        PlayerView(it).apply { useController = false }
+                    },
                     update = { it.player = player }
                 )
             } else {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Movie, null, tint = StudioGold, modifier = Modifier.size(42.dp))
+                    Icon(
+                        Icons.Default.Movie,
+                        null,
+                        tint = StudioGold,
+                        modifier = Modifier.size(42.dp)
+                    )
                     Spacer(Modifier.height(7.dp))
                     Text("No media loaded", color = StudioWhite, fontSize = 12.sp)
-                    Text("Import a video to start editing", color = StudioMuted, fontSize = 10.sp)
+                    Text(
+                        "Import a video to start editing",
+                        color = StudioMuted,
+                        fontSize = 10.sp
+                    )
                 }
             }
         }
@@ -434,33 +476,33 @@ private fun PreviewPanel(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(formatTime(position), color = StudioGold, fontSize = 11.sp)
-Spacer(Modifier.weight(1f))
+            Spacer(Modifier.weight(1f))
 
-IconButton(onClick = onStart, enabled = hasVideo) {
-    Icon(Icons.Default.SkipPrevious, null, tint = StudioWhite)
-}
+            IconButton(onClick = onStart, enabled = hasVideo) {
+                Icon(Icons.Default.SkipPrevious, null, tint = StudioWhite)
+            }
 
-IconButton(
-    onClick = onPlay,
-    enabled = hasVideo,
-    modifier = Modifier
-        .size(42.dp)
-        .background(StudioGold, RoundedCornerShape(50))
-) {
-    Icon(
-        if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
-        null,
-        tint = Color.Black
-    )
-}
+            IconButton(
+                onClick = onPlay,
+                enabled = hasVideo,
+                modifier = Modifier
+                    .size(42.dp)
+                    .background(StudioGold, RoundedCornerShape(50))
+            ) {
+                Icon(
+                    if (playing) Icons.Default.Pause
+                    else Icons.Default.PlayArrow,
+                    null,
+                    tint = Color.Black
+                )
+            }
 
-IconButton(onClick = onEnd, enabled = hasVideo) {
-    Icon(Icons.Default.SkipNext, null, tint = StudioWhite)
-}
+            IconButton(onClick = onEnd, enabled = hasVideo) {
+                Icon(Icons.Default.SkipNext, null, tint = StudioWhite)
+            }
 
-Spacer(Modifier.weight(1f))
-Text(formatTime(duration), color = StudioMuted, fontSize = 11.sp)
-            
+            Spacer(Modifier.weight(1f))
+            Text(formatTime(duration), color = StudioMuted, fontSize = 11.sp)
         }
     }
 }
@@ -496,32 +538,45 @@ private fun PageTools(
         Spacer(Modifier.height(10.dp))
 
         when (page) {
-    StudioPage.MEDIA -> {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ToolButton(
-                "Import Video",
-                Icons.Default.Add,
-                Modifier.weight(1f),
-                onImport
-            )
-
-            ToolButton(
-                "Media Library",
-                Icons.Default.Folder,
-                Modifier.weight(1f),
-                onClick = {
-                    onStatus("Imported media is listed in the timeline")
-                }
-            )
-        }
-    }
-
-    StudioPage.CUT, StudioPage.EDIT -> {
+            StudioPage.MEDIA -> {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ToolButton("Split", Icons.Default.ContentCut, Modifier.weight(1f), onSplit)
-                    ToolButton("Delete", Icons.Default.Delete, Modifier.weight(1f), onDelete, danger = true)
+                    ToolButton(
+                        "Import Video",
+                        Icons.Default.Add,
+                        Modifier.weight(1f),
+                        onImport
+                    )
+
+                    ToolButton(
+                        "Media Library",
+                        Icons.Default.Folder,
+                        Modifier.weight(1f),
+                        onClick = {
+                            onStatus("Imported media is listed in the timeline")
+                        }
+                    )
                 }
+            }
+
+            StudioPage.CUT, StudioPage.EDIT -> {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ToolButton(
+                        "Split",
+                        Icons.Default.ContentCut,
+                        Modifier.weight(1f),
+                        onSplit
+                    )
+                    ToolButton(
+                        "Delete",
+                        Icons.Default.Delete,
+                        Modifier.weight(1f),
+                        onDelete,
+                        danger = true
+                    )
+                }
+
                 Spacer(Modifier.height(7.dp))
+
                 Text(
                     clip?.name ?: "Select a clip in the timeline",
                     color = StudioMuted,
@@ -550,265 +605,256 @@ private fun PageTools(
 }
 
 @Composable
-private fun FeaturePlaceholder(title: String, description: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Default.Construction, null, tint = StudioGold)
-        Spacer(Modifier.width(9.dp))
-        Column {
-            Text(title, color = StudioWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            Text(description, color = StudioMuted, fontSize = 10.sp)
-        }
+private fun FeaturePlaceholder(
+    title: String,
+    description: String
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = title,
+            color = StudioGold,
+            style = MaterialTheme.typography.titleMedium
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = description,
+            color = StudioMuted,
+            style = MaterialTheme.typography.bodyMedium
+        )
     }
 }
 
 @Composable
 private fun TimelinePanel(
     clips: List<VideoClip>,
-    selectedId: Int,
-    position: Long,
-    onSelect: (Int, VideoClip) -> Unit
+    currentPosition: Long,
+    onSplit: () -> Unit,
+    onDelete: (VideoClip) -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(10.dp)
-            .background(StudioPanel, RoundedCornerShape(12.dp))
-            .padding(10.dp)
+            .background(StudioPanel)
+            .padding(12.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("TIMELINE", color = StudioGold, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-            Spacer(Modifier.weight(1f))
-            Text("MULTI-TRACK EDITOR", color = StudioMuted, fontSize = 9.sp)
-        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "Timeline",
+                color = StudioWhite,
+                style = MaterialTheme.typography.titleMedium
+            )
 
-        Spacer(Modifier.height(9.dp))
-
-        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-            repeat(9) { index ->
-                Text("${index * 5}s", color = StudioMuted, fontSize = 9.sp, modifier = Modifier.width(75.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onSplit) {
+                    Icon(
+                        Icons.Default.ContentCut,
+                        contentDescription = "Split clip",
+                        tint = StudioGold
+                    )
+                }
             }
         }
 
-        Spacer(Modifier.height(5.dp))
-TimelineTrackRow("V1", StudioGold, "MAIN VIDEO", clips, selectedId, onSelect)
-TimelineTrackRow("V2", StudioBlue, "OVERLAY", emptyList(), -1) { _, _ -> }
-TimelineTrackRow("A1", StudioGreen, "AUDIO", emptyList(), -1) { _, _ -> }
-TimelineTrackRow("T1", StudioPurple, "TEXT", emptyList(), -1) { _, _ -> }
+        Text(
+            text = "Playhead: ${formatTime(currentPosition)}",
+            color = StudioMuted,
+            style = MaterialTheme.typography.bodySmall
+        )
 
-        Spacer(Modifier.height(7.dp))
-        Text("Playhead: ${formatTime(position)}", color = StudioMuted, fontSize = 10.sp)
+        Spacer(modifier = Modifier.height(10.dp))
+
+        if (clips.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(90.dp)
+                    .background(StudioPanel2, RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Import media to start editing",
+                    color = StudioMuted
+                )
+            }
+        } else {
+            clips.forEachIndexed { index, clip ->
+                TimelineTrackRow(
+                    clip = clip,
+                    index = index,
+                    onDelete = { onDelete(clip) }
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+            }
+        }
     }
 }
 
 @Composable
 private fun TimelineTrackRow(
-    label: String,
-    color: Color,
-    description: String,
-    clips: List<VideoClip>,
-    selectedId: Int,
-    onSelect: (Int, VideoClip) -> Unit
+    clip: VideoClip,
+    index: Int,
+    onDelete: () -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(StudioPanel2, RoundedCornerShape(8.dp))
+            .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(
-            modifier = Modifier
-                .width(48.dp)
-                .height(48.dp)
-                .background(StudioPanel2, RoundedCornerShape(6.dp)),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(label, color = color, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-            Text(description, color = StudioMuted, fontSize = 6.sp)
+        Text(
+            text = "V${index + 1}",
+            color = StudioGold,
+            style = MaterialTheme.typography.labelMedium
+        )
+
+        Spacer(modifier = Modifier.width(10.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = clip.name,
+                color = StudioWhite,
+                maxLines = 1,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                text = formatTime(clip.durationMs),
+                color = StudioMuted,
+                style = MaterialTheme.typography.bodySmall
+            )
         }
 
-        Spacer(Modifier.width(6.dp))
-
-        Row(
-            modifier = Modifier
-                .weight(1f)
-                .height(48.dp)
-                .horizontalScroll(rememberScrollState())
-                .background(StudioBg, RoundedCornerShape(6.dp))
-                .padding(3.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            if (clips.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .width(190.dp)
-                        .border(1.dp, StudioPanel2, RoundedCornerShape(5.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("Empty track", color = StudioMuted, fontSize = 9.sp)
-                }
-            } else {
-                clips.forEachIndexed { index, clip ->
-                    val active = clip.id == selectedId
-                    Column(
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .width((clip.durationMs / 1000f * 8f).coerceIn(85f, 220f).dp)
-                            .background(
-                                if (active) Color(0xFF59451F) else Color(0xFF34302A),
-                                RoundedCornerShape(5.dp)
-                            )
-                            .border(
-                                if (active) 1.5.dp else 0.dp,
-                                if (active) StudioGold else Color.Transparent,
-                                RoundedCornerShape(5.dp)
-                            )
-                            .clickable { onSelect(index, clip) }
-                            .padding(5.dp),
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            "CLIP ${index + 1}",
-                            color = if (active) StudioGold else StudioWhite,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1
-                        )
-                        Text(formatTime(clip.durationMs), color = StudioMuted, fontSize = 8.sp)
-                    }
-                }
-            }
+        IconButton(onClick = onDelete) {
+            Icon(
+                Icons.Default.Delete,
+                contentDescription = "Delete clip",
+                tint = StudioRed
+            )
         }
     }
 }
 
 @Composable
 private fun InspectorPanel(
-    page: StudioPage,
-    clip: VideoClip?,
-    status: String
+    clips: List<VideoClip>
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 10.dp)
-            .background(StudioPanel, RoundedCornerShape(12.dp))
+            .background(StudioPanel)
             .padding(12.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Tune, null, tint = StudioGold, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(7.dp))
-            Text("INSPECTOR", color = StudioGold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.weight(1f))
-            Text(page.title, color = StudioMuted, fontSize = 10.sp)
-        }
+        Text(
+            text = "Inspector",
+            color = StudioGold,
+            style = MaterialTheme.typography.titleMedium
+        )
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
-        if (clip == null) {
-            Text("Select an item to inspect its properties", color = StudioMuted, fontSize = 10.sp)
-        } else {
-            Text(clip.name, color = StudioWhite, fontSize = 11.sp, maxLines = 1)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "Source range: ${formatTime(clip.startMs)} – ${formatTime(clip.endMs)}",
-                color = StudioMuted,
-                fontSize = 10.sp
-            )
-        }
+        Text(
+            text = "Media clips: ${clips.size}",
+            color = StudioWhite,
+            style = MaterialTheme.typography.bodyMedium
+        )
 
-        Spacer(Modifier.height(8.dp))
-        HorizontalDivider(color = StudioPanel2)
-        Spacer(Modifier.height(7.dp))
-        Text(status, color = StudioGreen, fontSize = 10.sp)
+        val totalDuration = clips.sumOf { it.durationMs }
+
+        Text(
+            text = "Total duration: ${formatTime(totalDuration)}",
+            color = StudioMuted,
+            style = MaterialTheme.typography.bodySmall
+        )
     }
 }
 
 @Composable
 private fun ToolButton(
     title: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-    danger: Boolean = false
+    icon: ImageVector,
+    selected: Boolean = false,
+    onClick: () -> Unit
 ) {
-    Row(
-        modifier = modifier
+    Column(
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
             .background(
-                if (danger) Color(0xFF382126) else StudioPanel2,
-                RoundedCornerShape(8.dp)
+                if (selected) StudioGold.copy(alpha = 0.16f)
+                else StudioPanel2
             )
-            .clickable { onClick() }
-            .padding(horizontal = 9.dp, vertical = 11.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Icon(
-            icon,
-            contentDescription = null,
-            tint = if (danger) StudioRed else StudioGold,
-            modifier = Modifier.size(16.dp)
+            imageVector = icon,
+            contentDescription = title,
+            tint = if (selected) StudioGold else StudioMuted
         )
-        Spacer(Modifier.width(6.dp))
+
+        Spacer(modifier = Modifier.height(4.dp))
+
         Text(
-            title,
-            color = if (danger) StudioRed else StudioWhite,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold
+            text = title,
+            color = if (selected) StudioGold else StudioWhite,
+            style = MaterialTheme.typography.labelSmall
         )
     }
 }
 
 @Composable
 private fun StudioBottomNavigation(
-    selected: StudioPage,
-    onSelect: (StudioPage) -> Unit
+    selectedPage: StudioPage,
+    onPageSelected: (StudioPage) -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFF111318))
-            .padding(horizontal = 3.dp, vertical = 7.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly
+    NavigationBar(
+        containerColor = StudioPanel,
+        contentColor = StudioWhite
     ) {
-        StudioPage.values().forEach { item ->
-            val active = selected == item
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable { onSelect(item) }
-                    .padding(vertical = 3.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Icon(
-                    item.icon,
-                    contentDescription = item.title,
-                    tint = if (active) StudioGold else StudioMuted,
-                    modifier = Modifier.size(21.dp)
-                )
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    item.title,
-                    color = if (active) StudioGold else StudioMuted,
-                    fontSize = 9.sp,
-                    fontWeight = if (active) FontWeight.Bold else FontWeight.Normal
-                )
-                if (active) {
-                    Spacer(Modifier.height(3.dp))
-                    Box(
-                        Modifier
-                            .width(20.dp)
-                            .height(2.dp)
-                            .background(StudioGold, RoundedCornerShape(2.dp))
+        StudioPage.values().forEach { page ->
+            NavigationBarItem(
+                selected = selectedPage == page,
+                onClick = { onPageSelected(page) },
+                icon = {
+                    Icon(
+                        imageVector = page.icon,
+                        contentDescription = page.title
                     )
-                }
-            }
+                },
+                label = {
+                    Text(page.title)
+                },
+                colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = StudioGold,
+                    selectedTextColor = StudioGold,
+                    indicatorColor = StudioGold.copy(alpha = 0.15f),
+                    unselectedIconColor = StudioMuted,
+                    unselectedTextColor = StudioMuted
+                )
+            )
         }
     }
 }
 
 private fun formatTime(milliseconds: Long): String {
-    val total = milliseconds.coerceAtLeast(0L) / 1000L
-    val minutes = total / 60L
-    val seconds = total % 60L
-    return String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
+    val safeTime = milliseconds.coerceAtLeast(0L)
+    val totalSeconds = safeTime / 1000
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    val millis = (safeTime % 1000) / 10
+
+    return "%02d:%02d.%02d".format(
+        minutes,
+        seconds,
+        millis
+    )
 }
