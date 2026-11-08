@@ -329,6 +329,13 @@ private fun StudioTopBar(
     projectName: String,
     onProjectNameChange: (String) -> Unit,
     onHome: () -> Unit
+    IconButton(onClick = onHome) {
+    Icon(
+        Icons.Default.Folder,
+        contentDescription = "Projects",
+        tint = StudioGold
+    )
+}
 )
     var editing by remember { mutableStateOf(false) }
 
