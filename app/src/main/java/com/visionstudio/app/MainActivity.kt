@@ -10,9 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,7 +21,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -69,7 +69,9 @@ fun VisionStudioApp() {
     val clips = remember { mutableStateListOf<VideoClip>() }
     val player = remember { ExoPlayer.Builder(context).build() }
 
-    val selectedClip = clips.firstOrNull { it.id == selectedClipId }
+    val selectedClip = clips.firstOrNull {
+        it.id == selectedClipId
+    }
 
     fun rebuildPlaylist(index: Int = 0, position: Long = 0L) {
         if (clips.isEmpty()) {
@@ -94,6 +96,7 @@ fun VisionStudioApp() {
         }
 
         val safeIndex = index.coerceIn(0, items.lastIndex)
+
         player.pause()
         player.setMediaItems(items, safeIndex, position.coerceAtLeast(0L))
         player.prepare()
@@ -106,6 +109,7 @@ fun VisionStudioApp() {
                 Intent.FLAG_GRANT_READ_URI_PERMISSION
             )
         } catch (_: Exception) {
+            // بعض مصادر الملفات لا تمنح صلاحية دائمة.
         }
 
         try {
@@ -126,7 +130,7 @@ fun VisionStudioApp() {
                 return
             }
 
-            val name = uri.lastPathSegment ?: "Video ${nextId}"
+            val name = uri.lastPathSegment ?: "Video $nextId"
 
             val clip = VideoClip(
                 id = nextId++,
@@ -138,6 +142,7 @@ fun VisionStudioApp() {
 
             clips.add(clip)
             selectedClipId = clip.id
+
             rebuildPlaylist(clips.lastIndex)
             status = "Media added to timeline"
             page = StudioPage.EDIT
@@ -154,7 +159,9 @@ fun VisionStudioApp() {
     }
 
     fun splitClip() {
-        val index = clips.indexOfFirst { it.id == selectedClipId }
+        val index = clips.indexOfFirst {
+            it.id == selectedClipId
+        }
 
         if (index < 0) {
             status = "Select a clip first"
@@ -162,7 +169,10 @@ fun VisionStudioApp() {
         }
 
         val clip = clips[index]
-        val splitAt = clip.startMs + player.currentPosition
+
+        // الموضع الحالي محلي داخل العنصر الجاري تشغيله.
+        val localPosition = player.currentPosition
+        val splitAt = clip.startMs + localPosition
 
         if (splitAt <= clip.startMs + 500L ||
             splitAt >= clip.endMs - 500L
@@ -172,6 +182,7 @@ fun VisionStudioApp() {
         }
 
         val first = clip.copy(endMs = splitAt)
+
         val second = clip.copy(
             id = nextId++,
             name = clip.name + " • Part 2",
@@ -180,13 +191,17 @@ fun VisionStudioApp() {
 
         clips[index] = first
         clips.add(index + 1, second)
+
         selectedClipId = second.id
         rebuildPlaylist(index + 1)
+
         status = "Clip split into two parts"
     }
 
     fun deleteClip() {
-        val index = clips.indexOfFirst { it.id == selectedClipId }
+        val index = clips.indexOfFirst {
+            it.id == selectedClipId
+        }
 
         if (index < 0) {
             status = "Select a clip to delete"
@@ -218,7 +233,8 @@ fun VisionStudioApp() {
                 mediaItem: MediaItem?,
                 reason: Int
             ) {
-                selectedClipId = mediaItem?.mediaId?.toIntOrNull() ?: -1
+                selectedClipId =
+                    mediaItem?.mediaId?.toIntOrNull() ?: -1
             }
 
             override fun onPlaybackStateChanged(state: Int) {
@@ -373,7 +389,9 @@ private fun StudioTopBar(
                     projectName,
                     color = StudioMuted,
                     fontSize = 11.sp,
-                    modifier = Modifier.clickable { editing = true }
+                    modifier = Modifier.clickable {
+                        editing = true
+                    }
                 )
             }
         }
@@ -429,7 +447,9 @@ private fun PreviewPanel(
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold
             )
+
             Spacer(Modifier.weight(1f))
+
             Text("16:9 • Preview", color = StudioMuted, fontSize = 10.sp)
         }
 
@@ -446,9 +466,13 @@ private fun PreviewPanel(
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
                     factory = {
-                        PlayerView(it).apply { useController = false }
+                        PlayerView(it).apply {
+                            useController = false
+                        }
                     },
-                    update = { it.player = player }
+                    update = {
+                        it.player = player
+                    }
                 )
             } else {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -458,8 +482,11 @@ private fun PreviewPanel(
                         tint = StudioGold,
                         modifier = Modifier.size(42.dp)
                     )
+
                     Spacer(Modifier.height(7.dp))
+
                     Text("No media loaded", color = StudioWhite, fontSize = 12.sp)
+
                     Text(
                         "Import a video to start editing",
                         color = StudioMuted,
@@ -476,6 +503,7 @@ private fun PreviewPanel(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(formatTime(position), color = StudioGold, fontSize = 11.sp)
+
             Spacer(Modifier.weight(1f))
 
             IconButton(onClick = onStart, enabled = hasVideo) {
@@ -502,6 +530,7 @@ private fun PreviewPanel(
             }
 
             Spacer(Modifier.weight(1f))
+
             Text(formatTime(duration), color = StudioMuted, fontSize = 11.sp)
         }
     }
@@ -531,7 +560,9 @@ private fun PageTools(
                 fontWeight = FontWeight.Bold,
                 fontSize = 12.sp
             )
+
             Spacer(Modifier.weight(1f))
+
             Text("$clipCount media clips", color = StudioMuted, fontSize = 10.sp)
         }
 
@@ -566,6 +597,7 @@ private fun PageTools(
                         Modifier.weight(1f),
                         onSplit
                     )
+
                     ToolButton(
                         "Delete",
                         Icons.Default.Delete,
@@ -620,172 +652,9 @@ private fun FeaturePlaceholder(
             color = StudioGold,
             style = MaterialTheme.typography.titleMedium
         )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = description,
-            color = StudioMuted,
-            style = MaterialTheme.typography.bodyMedium
-        )
-    }
-}
 
-@Composable
-private fun TimelinePanel(
-    clips: List<VideoClip>,
-    currentPosition: Long,
-    onSplit: () -> Unit,
-    onDelete: (VideoClip) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(StudioPanel)
-            .padding(12.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = "Timeline",
-                color = StudioWhite,
-                style = MaterialTheme.typography.titleMedium
-            )
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onSplit) {
-                    Icon(
-                        Icons.Default.ContentCut,
-                        contentDescription = "Split clip",
-                        tint = StudioGold
-                    )
-                }
-            }
-        }
-
-        Text(
-            text = "Playhead: ${formatTime(currentPosition)}",
-            color = StudioMuted,
-            style = MaterialTheme.typography.bodySmall
-        )
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        if (clips.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(90.dp)
-                    .background(StudioPanel2, RoundedCornerShape(10.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "Import media to start editing",
-                    color = StudioMuted
-                )
-            }
-        } else {
-            clips.forEachIndexed { index, clip ->
-                TimelineTrackRow(
-                    clip = clip,
-                    index = index,
-                    onDelete = { onDelete(clip) }
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-            }
-        }
-    }
-}
-
-@Composable
-private fun TimelineTrackRow(
-    clip: VideoClip,
-    index: Int,
-    onDelete: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(StudioPanel2, RoundedCornerShape(8.dp))
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = "V${index + 1}",
-            color = StudioGold,
-            style = MaterialTheme.typography.labelMedium
-        )
-
-        Spacer(modifier = Modifier.width(10.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = clip.name,
-                color = StudioWhite,
-                maxLines = 1,
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Text(
-                text = formatTime(clip.durationMs),
-                color = StudioMuted,
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
-
-        IconButton(onClick = onDelete) {
-            Icon(
-                Icons.Default.Delete,
-                contentDescription = "Delete clip",
-                tint = StudioRed
-            )
-        }
-    }
-}
-
-@Composable
-private fun InspectorPanel(
-    clips: List<VideoClip>
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(StudioPanel)
-            .padding(12.dp)
-    ) {
-        Text(
-            text = "Inspector",
-            color = StudioGold,
-            style = MaterialTheme.typography.titleMedium
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text = "Media clips: ${clips.size}",
-            color = StudioWhite,
-            style = MaterialTheme.typography.bodyMedium
-        )
-
-        val totalDuration = clips.sumOf { it.durationMs }
-
-@Composable
-private fun FeaturePlaceholder(
-    title: String,
-    description: String
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = title,
-            color = StudioGold,
-            style = MaterialTheme.typography.titleMedium
-        )
         Spacer(Modifier.height(8.dp))
+
         Text(
             text = description,
             color = StudioMuted,
@@ -828,10 +697,7 @@ private fun TimelinePanel(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(90.dp)
-                    .background(
-                        StudioPanel2,
-                        RoundedCornerShape(10.dp)
-                    ),
+                    .background(StudioPanel2, RoundedCornerShape(10.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -847,6 +713,7 @@ private fun TimelinePanel(
                     selected = clip.id == selectedId,
                     onClick = { onSelect(index, clip) }
                 )
+
                 Spacer(Modifier.height(6.dp))
             }
         }
@@ -888,6 +755,7 @@ private fun TimelineTrackRow(
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodyMedium
             )
+
             Text(
                 text = formatTime(clip.durationMs),
                 color = StudioMuted,
