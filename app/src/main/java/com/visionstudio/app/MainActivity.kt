@@ -769,8 +769,178 @@ private fun InspectorPanel(
 
         val totalDuration = clips.sumOf { it.durationMs }
 
+@Composable
+private fun FeaturePlaceholder(
+    title: String,
+    description: String
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
         Text(
-            text = "Total duration: ${formatTime(totalDuration)}",
+            text = title,
+            color = StudioGold,
+            style = MaterialTheme.typography.titleMedium
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = description,
+            color = StudioMuted,
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
+}
+
+@Composable
+private fun TimelinePanel(
+    clips: List<VideoClip>,
+    selectedId: Int,
+    position: Long,
+    onSelect: (Int, VideoClip) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(StudioPanel)
+            .padding(12.dp)
+    ) {
+        Text(
+            text = "Timeline",
+            color = StudioWhite,
+            style = MaterialTheme.typography.titleMedium
+        )
+
+        Spacer(Modifier.height(6.dp))
+
+        Text(
+            text = "Playhead: ${formatTime(position)}",
+            color = StudioMuted,
+            style = MaterialTheme.typography.bodySmall
+        )
+
+        Spacer(Modifier.height(10.dp))
+
+        if (clips.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(90.dp)
+                    .background(
+                        StudioPanel2,
+                        RoundedCornerShape(10.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "Import media to start editing",
+                    color = StudioMuted
+                )
+            }
+        } else {
+            clips.forEachIndexed { index, clip ->
+                TimelineTrackRow(
+                    clip = clip,
+                    index = index,
+                    selected = clip.id == selectedId,
+                    onClick = { onSelect(index, clip) }
+                )
+                Spacer(Modifier.height(6.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimelineTrackRow(
+    clip: VideoClip,
+    index: Int,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(
+                if (selected) StudioGold.copy(alpha = 0.16f)
+                else StudioPanel2
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "V${index + 1}",
+            color = StudioGold,
+            style = MaterialTheme.typography.labelMedium
+        )
+
+        Spacer(Modifier.width(10.dp))
+
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = clip.name,
+                color = StudioWhite,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                text = formatTime(clip.durationMs),
+                color = StudioMuted,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+
+        if (selected) {
+            Icon(
+                Icons.Default.CheckCircle,
+                contentDescription = "Selected",
+                tint = StudioGold
+            )
+        }
+    }
+}
+
+@Composable
+private fun InspectorPanel(
+    page: StudioPage,
+    clip: VideoClip?,
+    status: String
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(StudioPanel)
+            .padding(12.dp)
+    ) {
+        Text(
+            text = "Inspector",
+            color = StudioGold,
+            style = MaterialTheme.typography.titleMedium
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        Text(
+            text = "Workspace: ${page.title}",
+            color = StudioWhite,
+            style = MaterialTheme.typography.bodyMedium
+        )
+
+        Text(
+            text = clip?.name ?: "No clip selected",
+            color = StudioMuted,
+            style = MaterialTheme.typography.bodySmall
+        )
+
+        Spacer(Modifier.height(6.dp))
+
+        Text(
+            text = status,
             color = StudioMuted,
             style = MaterialTheme.typography.bodySmall
         )
@@ -781,16 +951,14 @@ private fun InspectorPanel(
 private fun ToolButton(
     title: String,
     icon: ImageVector,
-    selected: Boolean = false,
-    onClick: () -> Unit
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    danger: Boolean = false
 ) {
     Column(
-        modifier = Modifier
+        modifier = modifier
             .clip(RoundedCornerShape(10.dp))
-            .background(
-                if (selected) StudioGold.copy(alpha = 0.16f)
-                else StudioPanel2
-            )
+            .background(StudioPanel2)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -798,14 +966,14 @@ private fun ToolButton(
         Icon(
             imageVector = icon,
             contentDescription = title,
-            tint = if (selected) StudioGold else StudioMuted
+            tint = if (danger) StudioRed else StudioGold
         )
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(Modifier.height(4.dp))
 
         Text(
             text = title,
-            color = if (selected) StudioGold else StudioWhite,
+            color = if (danger) StudioRed else StudioWhite,
             style = MaterialTheme.typography.labelSmall
         )
     }
@@ -813,8 +981,8 @@ private fun ToolButton(
 
 @Composable
 private fun StudioBottomNavigation(
-    selectedPage: StudioPage,
-    onPageSelected: (StudioPage) -> Unit
+    selected: StudioPage,
+    onSelect: (StudioPage) -> Unit
 ) {
     NavigationBar(
         containerColor = StudioPanel,
@@ -822,8 +990,8 @@ private fun StudioBottomNavigation(
     ) {
         StudioPage.values().forEach { page ->
             NavigationBarItem(
-                selected = selectedPage == page,
-                onClick = { onPageSelected(page) },
+                selected = selected == page,
+                onClick = { onSelect(page) },
                 icon = {
                     Icon(
                         imageVector = page.icon,
