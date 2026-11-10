@@ -88,7 +88,6 @@ object TimelineEngine {
         }
 
         require(c.volume.isFinite() && c.volume >= 0f)
-        require(c.startGain.isFinite() && c.startGain in 0f..1f)
         require(c.fadeInMs in 0L..c.durationMs)
         require(c.fadeOutMs in 0L..c.durationMs)
     }
@@ -422,3 +421,4 @@ object TimelineEngine {
 
         return validated(clampPlayheadUnchecked(result))
     }
+
