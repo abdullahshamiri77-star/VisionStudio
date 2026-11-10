@@ -308,43 +308,58 @@ object TimelineEngine {
     }
 
     // تقسيم صوت
-    fun splitAudioClip(
-        state: TimelineState,
-        clipId: String,
-        splitAtMs: Long
-    ): TimelineState {
-        val clip = state.audioClips.firstOrNull {
-            it.id == clipId
-        } ?: return state
+    
+fun splitAudioClip(
+    state: TimelineState,
+    clipId: String,
+    splitAtMs: Long
+): TimelineState {
+    val clip = state.audioClips.firstOrNull {
+        it.id == clipId
+    } ?: return state
 
-        require(splitAtMs > clip.positionMs && splitAtMs < clip.endMs) {
-            "Split point must be inside the clip"
-        }
-
-        val leftDuration = splitAtMs - clip.positionMs
-        val sourceSplit = (
-            clip.sourceStartMs + leftDuration
-        ).coerceIn(clip.sourceStartMs, clip.sourceEndMs)
-
-        val leftClip = clip.copy(
-            durationMs = leftDuration,
-            sourceEndMs = sourceSplit,
-            fadeOutMs = 0L
-        )
-
-        val rightClip = clip.copy(
-            id = UUID.randomUUID().toString(),
-            positionMs = splitAtMs,
-            durationMs = clip.durationMs - leftDuration,
-            sourceStartMs = sourceSplit,
-            fadeInMs = 0L
-        )
-
-        return state.copy(
-            audioClips = state.audioClips
-                .filterNot { it.id == clipId } + leftClip + rightClip
-        )
+    require(splitAtMs > clip.positionMs && splitAtMs < clip.endMs) {
+        "Split point must be inside the clip"
     }
+
+    val leftDuration = splitAtMs - clip.positionMs
+    val rightDuration = clip.durationMs - leftDuration
+
+    val sourceDuration = clip.sourceEndMs - clip.sourceStartMs
+
+    val sourceSplit = (
+        clip.sourceStartMs +
+            (sourceDuration.toDouble() *
+                leftDuration.toDouble() /
+                clip.durationMs.toDouble()).roundToLong()
+    )
+
+    require(sourceSplit > clip.sourceStartMs &&
+            sourceSplit < clip.sourceEndMs) {
+        "Invalid audio source split point"
+    }
+
+    val rightClip = clip.copy(
+        id = UUID.randomUUID().toString(),
+        positionMs = splitAtMs,
+        durationMs = rightDuration,
+        sourceStartMs = sourceSplit,
+        fadeInMs = 0L
+    )
+
+    val leftClip = clip.copy(
+        durationMs = leftDuration,
+        sourceEndMs = sourceSplit,
+        fadeOutMs = 0L
+    )
+
+    return state.copy(
+        audioClips = state.audioClips
+            .filterNot { it.id == clipId } +
+            leftClip + rightClip
+    )
+}
+
 
     // تحويل زمن إلى أقرب إطار
     fun snapToFrame(
