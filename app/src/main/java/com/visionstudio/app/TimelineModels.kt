@@ -1,23 +1,15 @@
 
 package com.visionstudio.app
 
+import java.math.BigInteger
 import java.util.UUID
 
-// =====================================================
-// VISION STUDIO - TIMELINE CORE MODELS
-// =====================================================
-
-// أنواع المسارات
 enum class TimelineTrackType {
     VIDEO,
     AUDIO,
     TEXT,
     EFFECT
 }
-
-// =====================================================
-// إعدادات المشروع والتوقيت
-// =====================================================
 
 data class TimelineProjectSettings(
     val width: Int = 1920,
@@ -26,31 +18,87 @@ data class TimelineProjectSettings(
     val audioSampleRate: Int = 48000
 ) {
     init {
-        require(width > 0 && height > 0)
-        require(frameRate > 0)
-        require(audioSampleRate > 0)
+        require(width > 0 && height > 0) {
+            "Project dimensions must be positive"
+        }
+        require(frameRate in SUPPORTED_FPS) {
+            "FPS must be 24, 30, or 60"
+        }
+        require(audioSampleRate > 0) {
+            "Audio sample rate must be positive"
+        }
     }
 
-    // تحويل إطار إلى مللي ثانية
+    /**
+     * Converts a frame index to the nearest millisecond.
+     * Rounding mode: half-up.
+     */
     fun frameToMs(frame: Long): Long {
-        return (frame * 1000L) / frameRate
+        require(frame >= 0L) {
+            "Frame must not be negative"
+        }
+
+        val numerator = BigInteger.valueOf(frame)
+            .multiply(THOUSAND)
+
+        return numerator
+            .add(BigInteger.valueOf(frameRate / 2L))
+            .divide(BigInteger.valueOf(frameRate.toLong()))
+            .longValueExact()
     }
 
-    // تحويل مللي ثانية إلى إطار
+    /**
+     * Converts milliseconds to the nearest frame.
+     * Rounding mode: half-up.
+     */
     fun msToFrame(timeMs: Long): Long {
-        return (timeMs * frameRate) / 1000L
+        require(timeMs >= 0L) {
+            "Time must not be negative"
+        }
+
+        val numerator = BigInteger.valueOf(timeMs)
+            .multiply(BigInteger.valueOf(frameRate.toLong()))
+
+        return numerator
+            .add(BigInteger.valueOf(500L))
+            .divide(THOUSAND)
+            .longValueExact()
     }
 
-    // تقريب الوقت إلى أقرب إطار
+    /**
+     * Calculates the number of frames required
+     * to cover the complete duration.
+     *
+     * Uses ceiling instead of nearest-frame rounding.
+     */
+    fun durationMsToFramesCeil(durationMs: Long): Long {
+        require(durationMs >= 0L) {
+            "Duration must not be negative"
+        }
+
+        val numerator = BigInteger.valueOf(durationMs)
+            .multiply(BigInteger.valueOf(frameRate.toLong()))
+
+        return numerator
+            .add(THOUSAND)
+            .subtract(BigInteger.ONE)
+            .divide(THOUSAND)
+            .longValueExact()
+    }
+
+    /**
+     * Snaps a millisecond position to the nearest frame boundary.
+     */
     fun snapToFrame(timeMs: Long): Long {
-        val frame = ((timeMs * frameRate + 500L) / 1000L)
-        return frameToMs(frame)
+        return frameToMs(msToFrame(timeMs))
+    }
+
+    companion object {
+        val SUPPORTED_FPS = setOf(24, 30, 60)
+
+        private val THOUSAND = BigInteger.valueOf(1000L)
     }
 }
-
-// =====================================================
-// المسارات
-// =====================================================
 
 data class TimelineTrack(
     val id: String = UUID.randomUUID().toString(),
@@ -63,23 +111,18 @@ data class TimelineTrack(
     val volume: Float = 1f
 )
 
-// =====================================================
-// الواجهة المشتركة للمقاطع
-// =====================================================
-
 interface TimelineItem {
     val id: String
     val trackId: String
     val positionMs: Long
     val durationMs: Long
 
+    /**
+     * Uses checked arithmetic to prevent silent overflow.
+     */
     val endMs: Long
-        get() = positionMs + durationMs
+        get() = Math.addExact(positionMs, durationMs)
 }
-
-// =====================================================
-// مقاطع الفيديو
-// =====================================================
 
 data class TimelineVideoClip(
     override val id: String = UUID.randomUUID().toString(),
@@ -93,20 +136,7 @@ data class TimelineVideoClip(
     val speed: Float = 1f,
     val volume: Float = 1f,
     val isEnabled: Boolean = true
-) : TimelineItem {
-
-    init {
-        require(positionMs >= 0L)
-        require(durationMs > 0L)
-        require(sourceStartMs >= 0L)
-        require(sourceEndMs >= sourceStartMs)
-        require(speed > 0f)
-    }
-}
-
-// =====================================================
-// مقاطع الصوت
-// =====================================================
+) : TimelineItem
 
 data class TimelineAudioClip(
     override val id: String = UUID.randomUUID().toString(),
@@ -120,22 +150,14 @@ data class TimelineAudioClip(
     val volume: Float = 1f,
     val fadeInMs: Long = 0L,
     val fadeOutMs: Long = 0L,
-    val isEnabled: Boolean = true
-) : TimelineItem {
+    val isEnabled: Boolean = true,
 
-    init {
-        require(positionMs >= 0L)
-        require(durationMs > 0L)
-        require(sourceStartMs >= 0L)
-        require(sourceEndMs >= sourceStartMs)
-        require(fadeInMs >= 0L)
-        require(fadeOutMs >= 0L)
-    }
-}
-
-// =====================================================
-// مقاطع النص والعناوين
-// =====================================================
+    /**
+     * Retained for compatibility with existing code.
+     * Audible behavior depends on the audio renderer.
+     */
+    val startGain: Float = 0f
+) : TimelineItem
 
 data class TimelineTextClip(
     override val id: String = UUID.randomUUID().toString(),
@@ -147,18 +169,7 @@ data class TimelineTextClip(
     val color: Long = 0xFFFFFFFF,
     val positionX: Float = 0.5f,
     val positionY: Float = 0.5f
-) : TimelineItem {
-
-    init {
-        require(positionMs >= 0L)
-        require(durationMs > 0L)
-        require(fontSize > 0f)
-    }
-}
-
-// =====================================================
-// الانتقالات
-// =====================================================
+) : TimelineItem
 
 enum class TransitionType {
     DISSOLVE,
@@ -174,15 +185,7 @@ data class TimelineTransition(
     val toClipId: String,
     val type: TransitionType = TransitionType.DISSOLVE,
     val durationMs: Long = 500L
-) {
-    init {
-        require(durationMs > 0L)
-    }
-}
-
-// =====================================================
-// Keyframes - التحكم بالحركة
-// =====================================================
+)
 
 enum class KeyframeProperty {
     POSITION_X,
@@ -199,15 +202,7 @@ data class TimelineKeyframe(
     val timeMs: Long,
     val property: KeyframeProperty,
     val value: Float
-) {
-    init {
-        require(timeMs >= 0L)
-    }
-}
-
-// =====================================================
-// حالة الخط الزمني
-// =====================================================
+)
 
 data class TimelineState(
     val tracks: List<TimelineTrack> = emptyList(),
@@ -217,10 +212,12 @@ data class TimelineState(
     val transitions: List<TimelineTransition> = emptyList(),
     val keyframes: List<TimelineKeyframe> = emptyList(),
     val playheadMs: Long = 0L,
-    val settings: TimelineProjectSettings =
-        TimelineProjectSettings()
+    val settings: TimelineProjectSettings = TimelineProjectSettings()
 ) {
 
+    /**
+     * Project duration is determined by the latest clip endpoint.
+     */
     val durationMs: Long
         get() = maxOf(
             videoClips.maxOfOrNull { it.endMs } ?: 0L,
@@ -228,9 +225,15 @@ data class TimelineState(
             textClips.maxOfOrNull { it.endMs } ?: 0L
         )
 
+    /**
+     * Number of frames required to cover the entire project.
+     */
     val durationFrames: Long
-        get() = settings.msToFrame(durationMs)
+        get() = settings.durationMsToFramesCeil(durationMs)
 
+    /**
+     * Playhead position converted to the nearest frame.
+     */
     val playheadFrame: Long
         get() = settings.msToFrame(playheadMs)
 }
