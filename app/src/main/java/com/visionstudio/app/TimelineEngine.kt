@@ -268,6 +268,8 @@ object TimelineEngine {
     }
 
     // تقسيم فيديو مع مراعاة سرعة التشغيل
+    
+    // تقسيم فيديو مع الحفاظ على الإطارات المفتاحية
     fun splitVideoClip(
         state: TimelineState,
         clipId: String,
@@ -287,7 +289,14 @@ object TimelineEngine {
         val sourceSplit = (
             clip.sourceStartMs +
                 (leftDuration.toDouble() * clip.speed).roundToLong()
-            ).coerceIn(clip.sourceStartMs, clip.sourceEndMs)
+        ).coerceIn(clip.sourceStartMs, clip.sourceEndMs)
+
+        require(sourceSplit > clip.sourceStartMs &&
+                sourceSplit < clip.sourceEndMs) {
+            "Invalid source split point"
+        }
+
+        val rightClipId = UUID.randomUUID().toString()
 
         val leftClip = clip.copy(
             durationMs = leftDuration,
@@ -295,17 +304,41 @@ object TimelineEngine {
         )
 
         val rightClip = clip.copy(
-            id = UUID.randomUUID().toString(),
+            id = rightClipId,
             positionMs = splitAtMs,
             durationMs = rightDuration,
             sourceStartMs = sourceSplit
         )
 
+        // الإطارات المفتاحية محسوبة بالنسبة لبداية المقطع
+        val leftKeyframes = state.keyframes.filter {
+            it.clipId == clipId && it.timeMs < leftDuration
+        }
+
+        val rightKeyframes = state.keyframes
+            .filter {
+                it.clipId == clipId && it.timeMs >= leftDuration
+            }
+            .map {
+                it.copy(
+                    id = UUID.randomUUID().toString(),
+                    clipId = rightClipId,
+                    timeMs = it.timeMs - leftDuration
+                )
+            }
+
+        val updatedKeyframes = state.keyframes.filterNot {
+            it.clipId == clipId
+        } + leftKeyframes + rightKeyframes
+
         return state.copy(
             videoClips = state.videoClips
-                .filterNot { it.id == clipId } + leftClip + rightClip
+                .filterNot { it.id == clipId } +
+                leftClip + rightClip,
+            keyframes = updatedKeyframes
         )
     }
+
 
     // تقسيم صوت
     fun splitAudioClip(
