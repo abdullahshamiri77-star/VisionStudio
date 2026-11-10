@@ -418,7 +418,8 @@ object TimelineEngine {
                 it.clipId in removedIds
             }
         )
-
-        return validated(clampPlayheadUnchecked(result))
+            return validated(clampPlayheadUnchecked(result))
     }
+}
 
+                
