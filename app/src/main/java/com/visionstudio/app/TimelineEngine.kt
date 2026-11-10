@@ -6,84 +6,58 @@ import kotlin.math.roundToLong
 
 /**
  * VISION STUDIO
- * Timeline Engine - Version 2
+ * Timeline Engine - Version 3
  *
  * محرك العمليات الأساسية للخط الزمني.
- * يدعم الفيديو والصوت والنصوص والمسارات ومؤشر التشغيل.
  */
 object TimelineEngine {
 
-    // إنشاء المسارات الافتراضية
+    // المسارات الافتراضية
     fun createDefaultTracks(): List<TimelineTrack> {
-    return listOf(
-        TimelineTrack(
-            name = "V1 - Main Video",
-            type = TimelineTrackType.VIDEO,
-            index = 0
-        ),
-        TimelineTrack(
-            name = "V2 - Overlay Video",
-            type = TimelineTrackType.VIDEO,
-            index = 1
-        ),
-        TimelineTrack(
-            name = "A1 - Main Audio",
-            type = TimelineTrackType.AUDIO,
-            index = 2
-        ),
-        TimelineTrack(
-            name = "A2 - Music",
-            type = TimelineTrackType.AUDIO,
-            index = 3
-        ),
-        TimelineTrack(
-            name = "T1 - Titles",
-            type = TimelineTrackType.TEXT,
-            index = 4
+        return listOf(
+            TimelineTrack(
+                name = "V1 - Main Video",
+                type = TimelineTrackType.VIDEO,
+                index = 0
+            ),
+            TimelineTrack(
+                name = "V2 - Overlay Video",
+                type = TimelineTrackType.VIDEO,
+                index = 1
+            ),
+            TimelineTrack(
+                name = "A1 - Main Audio",
+                type = TimelineTrackType.AUDIO,
+                index = 2
+            ),
+            TimelineTrack(
+                name = "A2 - Music",
+                type = TimelineTrackType.AUDIO,
+                index = 3
+            ),
+            TimelineTrack(
+                name = "T1 - Titles",
+                type = TimelineTrackType.TEXT,
+                index = 4
+            )
         )
-    )
-}
-    // إضافة مسار
-    fun addTrack(
-        state: TimelineState,
-        track: TimelineTrack
-    ): TimelineState {
-        require(state.tracks.none { it.id == track.id }) {
-            "Track ID already exists"
-        }
-        require(state.tracks.none { it.index == track.index }) {
-            "Track index already exists"
-        }
-
-        return state.copy(tracks = state.tracks + track)
     }
 
-    // حذف مسار وجميع محتوياته
-    fun removeTrack(
+    // التحقق من المعرفات
+    private fun requireUniqueClipId(
         state: TimelineState,
-        trackId: String
-    ): TimelineState {
-        val removedClipIds =
-            state.videoClips.filter { it.trackId == trackId }.map { it.id } +
-            state.audioClips.filter { it.trackId == trackId }.map { it.id } +
-            state.textClips.filter { it.trackId == trackId }.map { it.id }
+        clipId: String
+    ) {
+        val exists =
+            state.videoClips.any { it.id == clipId } ||
+            state.audioClips.any { it.id == clipId } ||
+            state.textClips.any { it.id == clipId }
 
-        return state.copy(
-            tracks = state.tracks.filterNot { it.id == trackId },
-            videoClips = state.videoClips.filterNot { it.trackId == trackId },
-            audioClips = state.audioClips.filterNot { it.trackId == trackId },
-            textClips = state.textClips.filterNot { it.trackId == trackId },
-            transitions = state.transitions.filterNot {
-                it.fromClipId in removedClipIds ||
-                    it.toClipId in removedClipIds
-            },
-            keyframes = state.keyframes.filterNot {
-                it.clipId in removedClipIds
-            }
-        ).let { clampPlayhead(it) }
+        require(!exists) {
+            "Clip ID already exists"
+        }
     }
 
-    // التحقق من وجود مسار مناسب
     private fun requireTrack(
         state: TimelineState,
         trackId: String,
@@ -96,18 +70,70 @@ object TimelineEngine {
         }
     }
 
+    // إضافة مسار
+    fun addTrack(
+        state: TimelineState,
+        track: TimelineTrack
+    ): TimelineState {
+        require(state.tracks.none { it.id == track.id }) {
+            "Track ID already exists"
+        }
+        require(state.tracks.none { it.index == track.index }) {
+            "Track index already exists"
+        }
+        require(track.index >= 0) {
+            "Track index cannot be negative"
+        }
+
+        return state.copy(
+            tracks = state.tracks + track
+        )
+    }
+
+    // حذف مسار ومحتوياته
+    fun removeTrack(
+        state: TimelineState,
+        trackId: String
+    ): TimelineState {
+        require(state.tracks.any { it.id == trackId }) {
+            "Track not found"
+        }
+
+        val removedClipIds =
+            state.videoClips.filter { it.trackId == trackId }.map { it.id } +
+            state.audioClips.filter { it.trackId == trackId }.map { it.id } +
+            state.textClips.filter { it.trackId == trackId }.map { it.id }
+
+        val updated = state.copy(
+            tracks = state.tracks.filterNot { it.id == trackId },
+            videoClips = state.videoClips.filterNot { it.trackId == trackId },
+            audioClips = state.audioClips.filterNot { it.trackId == trackId },
+            textClips = state.textClips.filterNot { it.trackId == trackId },
+            transitions = state.transitions.filterNot {
+                it.fromClipId in removedClipIds ||
+                it.toClipId in removedClipIds
+            },
+            keyframes = state.keyframes.filterNot {
+                it.clipId in removedClipIds
+            }
+        )
+
+        return clampPlayhead(updated)
+    }
+
     // إضافة فيديو
     fun addVideoClip(
         state: TimelineState,
         clip: TimelineVideoClip
     ): TimelineState {
         requireTrack(state, clip.trackId, TimelineTrackType.VIDEO)
-        require(state.videoClips.none { it.id == clip.id }) {
-            "Video clip ID already exists"
-        }
-        require(clip.positionMs >= 0L && clip.durationMs > 0L) {
-            "Invalid video timing"
-        }
+        requireUniqueClipId(state, clip.id)
+
+        require(clip.positionMs >= 0L)
+        require(clip.durationMs > 0L)
+        require(clip.sourceEndMs > clip.sourceStartMs)
+        require(clip.speed.isFinite() && clip.speed > 0f)
+        require(clip.volume.isFinite() && clip.volume >= 0f)
 
         return state.copy(
             videoClips = state.videoClips + clip
@@ -120,12 +146,14 @@ object TimelineEngine {
         clip: TimelineAudioClip
     ): TimelineState {
         requireTrack(state, clip.trackId, TimelineTrackType.AUDIO)
-        require(state.audioClips.none { it.id == clip.id }) {
-            "Audio clip ID already exists"
-        }
-        require(clip.positionMs >= 0L && clip.durationMs > 0L) {
-            "Invalid audio timing"
-        }
+        requireUniqueClipId(state, clip.id)
+
+        require(clip.positionMs >= 0L)
+        require(clip.durationMs > 0L)
+        require(clip.sourceEndMs > clip.sourceStartMs)
+        require(clip.fadeInMs <= clip.durationMs)
+        require(clip.fadeOutMs <= clip.durationMs)
+        require(clip.volume.isFinite() && clip.volume >= 0f)
 
         return state.copy(
             audioClips = state.audioClips + clip
@@ -138,12 +166,13 @@ object TimelineEngine {
         clip: TimelineTextClip
     ): TimelineState {
         requireTrack(state, clip.trackId, TimelineTrackType.TEXT)
-        require(state.textClips.none { it.id == clip.id }) {
-            "Text clip ID already exists"
-        }
-        require(clip.positionMs >= 0L && clip.durationMs > 0L) {
-            "Invalid text timing"
-        }
+        requireUniqueClipId(state, clip.id)
+
+        require(clip.positionMs >= 0L)
+        require(clip.durationMs > 0L)
+        require(clip.fontSize.isFinite() && clip.fontSize > 0f)
+        require(clip.positionX.isFinite())
+        require(clip.positionY.isFinite())
 
         return state.copy(
             textClips = state.textClips + clip
@@ -156,19 +185,19 @@ object TimelineEngine {
         clipId: String,
         newPositionMs: Long
     ): TimelineState {
-        require(newPositionMs >= 0L) {
-            "Position cannot be negative"
-        }
+        require(newPositionMs >= 0L)
         require(state.videoClips.any { it.id == clipId }) {
             "Video clip not found"
         }
 
-        return state.copy(
+        val updated = state.copy(
             videoClips = state.videoClips.map {
                 if (it.id == clipId) it.copy(positionMs = newPositionMs)
                 else it
             }
         )
+
+        return clampPlayhead(updated)
     }
 
     // نقل صوت
@@ -177,19 +206,19 @@ object TimelineEngine {
         clipId: String,
         newPositionMs: Long
     ): TimelineState {
-        require(newPositionMs >= 0L) {
-            "Position cannot be negative"
-        }
+        require(newPositionMs >= 0L)
         require(state.audioClips.any { it.id == clipId }) {
             "Audio clip not found"
         }
 
-        return state.copy(
+        val updated = state.copy(
             audioClips = state.audioClips.map {
                 if (it.id == clipId) it.copy(positionMs = newPositionMs)
                 else it
             }
         )
+
+        return clampPlayhead(updated)
     }
 
     // نقل نص
@@ -198,22 +227,22 @@ object TimelineEngine {
         clipId: String,
         newPositionMs: Long
     ): TimelineState {
-        require(newPositionMs >= 0L) {
-            "Position cannot be negative"
-        }
+        require(newPositionMs >= 0L)
         require(state.textClips.any { it.id == clipId }) {
             "Text clip not found"
         }
 
-        return state.copy(
+        val updated = state.copy(
             textClips = state.textClips.map {
                 if (it.id == clipId) it.copy(positionMs = newPositionMs)
                 else it
             }
         )
+
+        return clampPlayhead(updated)
     }
 
-    // حذف فيديو وتنظيف الانتقالات والإطارات المفتاحية
+    // حذف فيديو
     fun removeVideoClip(
         state: TimelineState,
         clipId: String
@@ -222,7 +251,7 @@ object TimelineEngine {
             "Video clip not found"
         }
 
-        return state.copy(
+        val updated = state.copy(
             videoClips = state.videoClips.filterNot { it.id == clipId },
             transitions = state.transitions.filterNot {
                 it.fromClipId == clipId || it.toClipId == clipId
@@ -230,7 +259,9 @@ object TimelineEngine {
             keyframes = state.keyframes.filterNot {
                 it.clipId == clipId
             }
-        ).let { clampPlayhead(it) }
+        )
+
+        return clampPlayhead(updated)
     }
 
     // حذف صوت
@@ -242,12 +273,14 @@ object TimelineEngine {
             "Audio clip not found"
         }
 
-        return state.copy(
+        val updated = state.copy(
             audioClips = state.audioClips.filterNot { it.id == clipId },
             keyframes = state.keyframes.filterNot {
                 it.clipId == clipId
             }
-        ).let { clampPlayhead(it) }
+        )
+
+        return clampPlayhead(updated)
     }
 
     // حذف نص
@@ -259,15 +292,17 @@ object TimelineEngine {
             "Text clip not found"
         }
 
-        return state.copy(
+        val updated = state.copy(
             textClips = state.textClips.filterNot { it.id == clipId },
             keyframes = state.keyframes.filterNot {
                 it.clipId == clipId
             }
-        ).let { clampPlayhead(it) }
+        )
+
+        return clampPlayhead(updated)
     }
 
-    // تقسيم فيديو مع مراعاة سرعة التشغيل
+    // تقسيم فيديو
     fun splitVideoClip(
         state: TimelineState,
         clipId: String,
@@ -287,7 +322,16 @@ object TimelineEngine {
         val sourceSplit = (
             clip.sourceStartMs +
                 (leftDuration.toDouble() * clip.speed).roundToLong()
-            ).coerceIn(clip.sourceStartMs, clip.sourceEndMs)
+        ).coerceIn(clip.sourceStartMs, clip.sourceEndMs)
+
+        require(
+            sourceSplit > clip.sourceStartMs &&
+            sourceSplit < clip.sourceEndMs
+        ) {
+            "Invalid source split point"
+        }
+
+        val rightClipId = UUID.randomUUID().toString()
 
         val leftClip = clip.copy(
             durationMs = leftDuration,
@@ -295,15 +339,39 @@ object TimelineEngine {
         )
 
         val rightClip = clip.copy(
-            id = UUID.randomUUID().toString(),
+            id = rightClipId,
             positionMs = splitAtMs,
             durationMs = rightDuration,
             sourceStartMs = sourceSplit
         )
 
+        // زمن الإطار المفتاحي نسبي لبداية المقطع
+        val leftKeyframes = state.keyframes.filter {
+            it.clipId == clipId && it.timeMs < leftDuration
+        }
+
+        val rightKeyframes = state.keyframes
+            .filter {
+                it.clipId == clipId && it.timeMs >= leftDuration
+            }
+            .map {
+                it.copy(
+                    id = UUID.randomUUID().toString(),
+                    clipId = rightClipId,
+                    timeMs = it.timeMs - leftDuration
+                )
+            }
+
+        val updatedKeyframes =
+            state.keyframes.filterNot {
+                it.clipId == clipId
+            } + leftKeyframes + rightKeyframes
+
         return state.copy(
-            videoClips = state.videoClips
-                .filterNot { it.id == clipId } + leftClip + rightClip
+            videoClips = state.videoClips.filterNot {
+                it.id == clipId
+            } + leftClip + rightClip,
+            keyframes = updatedKeyframes
         )
     }
 
@@ -322,9 +390,21 @@ object TimelineEngine {
         }
 
         val leftDuration = splitAtMs - clip.positionMs
-        val sourceSplit = (
-            clip.sourceStartMs + leftDuration
-        ).coerceIn(clip.sourceStartMs, clip.sourceEndMs)
+        val rightDuration = clip.durationMs - leftDuration
+        val sourceDuration = clip.sourceEndMs - clip.sourceStartMs
+
+        val sourceSplit = clip.sourceStartMs + (
+            sourceDuration.toDouble() *
+                leftDuration.toDouble() /
+                clip.durationMs.toDouble()
+        ).roundToLong()
+
+        require(
+            sourceSplit > clip.sourceStartMs &&
+            sourceSplit < clip.sourceEndMs
+        ) {
+            "Invalid audio source split point"
+        }
 
         val leftClip = clip.copy(
             durationMs = leftDuration,
@@ -335,18 +415,19 @@ object TimelineEngine {
         val rightClip = clip.copy(
             id = UUID.randomUUID().toString(),
             positionMs = splitAtMs,
-            durationMs = clip.durationMs - leftDuration,
+            durationMs = rightDuration,
             sourceStartMs = sourceSplit,
             fadeInMs = 0L
         )
 
         return state.copy(
-            audioClips = state.audioClips
-                .filterNot { it.id == clipId } + leftClip + rightClip
+            audioClips = state.audioClips.filterNot {
+                it.id == clipId
+            } + leftClip + rightClip
         )
     }
 
-    // تحويل زمن إلى أقرب إطار
+    // تقريب الزمن إلى أقرب إطار
     fun snapToFrame(
         timeMs: Long,
         frameRate: Int
@@ -355,13 +436,15 @@ object TimelineEngine {
             "Frame rate must be greater than zero"
         }
 
-        val frame = (
-            timeMs.coerceAtLeast(0L).toDouble() *
-                frameRate / 1000.0
-            ).roundToLong()
+        val safeTime = timeMs.coerceAtLeast(0L)
 
-        return (frame.toDouble() * 1000.0 / frameRate)
-            .roundToLong()
+        val frame = (
+            safeTime.toDouble() * frameRate.toDouble() / 1000.0
+        ).roundToLong()
+
+        return (
+            frame.toDouble() * 1000.0 / frameRate.toDouble()
+        ).roundToLong()
     }
 
     // تحريك مؤشر التشغيل
@@ -388,10 +471,11 @@ object TimelineEngine {
         frame: Long
     ): TimelineState {
         val safeFrame = frame.coerceAtLeast(0L)
+
         val timeMs = (
             safeFrame.toDouble() * 1000.0 /
-                state.settings.frameRate
-            ).roundToLong()
+                state.settings.frameRate.toDouble()
+        ).roundToLong()
 
         return movePlayhead(state, timeMs)
     }
@@ -400,10 +484,12 @@ object TimelineEngine {
     fun resetPlayhead(
         state: TimelineState
     ): TimelineState {
-        return state.copy(playheadMs = 0L)
+        return state.copy(
+            playheadMs = 0L
+        )
     }
 
-    // ضبط المؤشر بعد تغيّر مدة المشروع
+    // ضبط مؤشر التشغيل
     private fun clampPlayhead(
         state: TimelineState
     ): TimelineState {
