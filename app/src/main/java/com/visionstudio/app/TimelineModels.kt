@@ -1,6 +1,6 @@
-
 package com.visionstudio.app
 
+import java.math.BigInteger
 import java.util.UUID
 
 // =====================================================
@@ -39,6 +39,16 @@ data class TimelineProjectSettings(
     // تحويل مللي ثانية إلى إطار
     fun msToFrame(timeMs: Long): Long {
         return (timeMs * frameRate) / 1000L
+    }
+
+    fun durationMsToFramesCeil(durationMs: Long): Long {
+        require(durationMs >= 0L)
+        val numerator = BigInteger.valueOf(durationMs)
+            .multiply(BigInteger.valueOf(frameRate.toLong()))
+        val denominator = BigInteger.valueOf(1000L)
+        return numerator.add(denominator).subtract(BigInteger.ONE)
+            .divide(denominator)
+            .longValueExact()
     }
 
     // تقريب الوقت إلى أقرب إطار
