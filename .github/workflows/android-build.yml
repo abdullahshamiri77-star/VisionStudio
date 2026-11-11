@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - main
+      - abdullahshamiri77-star-patch-5
 
 permissions:
   contents: read

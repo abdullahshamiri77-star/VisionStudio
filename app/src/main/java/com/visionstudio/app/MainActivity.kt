@@ -66,15 +66,33 @@ fun VisionStudioApp() {
     var playerDuration by remember { mutableLongStateOf(0L) }
     var playing by remember { mutableStateOf(false) }
 
-    val clips = remember { mutableStateListOf<VideoClip>() }
+    var timelineState by remember { mutableStateOf(
+        TimelineState(tracks = TimelineEngine.createDefaultTracks())
+    ) }
+    val clips = timelineState.videoClips.mapNotNull { timelineClip ->
+        val id = timelineClip.id.toIntOrNull() ?: return@mapNotNull null
+        VideoClip(
+            id = id,
+            uri = Uri.parse(timelineClip.sourceUri),
+            name = timelineClip.name,
+            startMs = timelineClip.sourceStartMs,
+            endMs = timelineClip.sourceEndMs
+        )
+    }
     val player = remember { ExoPlayer.Builder(context).build() }
 
     val selectedClip = clips.firstOrNull {
         it.id == selectedClipId
     }
 
+    fun currentVideoClips(): List<VideoClip> = timelineState.videoClips.mapNotNull { item ->
+        val id = item.id.toIntOrNull() ?: return@mapNotNull null
+        VideoClip(id, Uri.parse(item.sourceUri), item.name, item.sourceStartMs, item.sourceEndMs)
+    }
+
     fun rebuildPlaylist(index: Int = 0, position: Long = 0L) {
-        if (clips.isEmpty()) {
+        val playlistClips = currentVideoClips()
+        if (playlistClips.isEmpty()) {
             player.pause()
             player.clearMediaItems()
             currentPosition = 0L
@@ -82,7 +100,7 @@ fun VisionStudioApp() {
             return
         }
 
-        val items = clips.map { clip ->
+        val items = playlistClips.map { clip ->
             val clipping = MediaItem.ClippingConfiguration.Builder()
                 .setStartPositionMs(clip.startMs)
                 .setEndPositionMs(clip.endMs)
@@ -132,18 +150,25 @@ fun VisionStudioApp() {
 
             val name = uri.lastPathSegment ?: "Video $nextId"
 
-            val clip = VideoClip(
-                id = nextId++,
-                uri = uri,
+            val clipId = nextId++
+            val videoTrack = timelineState.tracks.firstOrNull {
+                it.type == TimelineTrackType.VIDEO && !it.isLocked
+            } ?: throw IllegalStateException("No available video track")
+
+            val timelineClip = TimelineVideoClip(
+                id = clipId.toString(),
+                trackId = videoTrack.id,
+                sourceUri = uri.toString(),
                 name = name,
-                startMs = 0L,
-                endMs = length
+                positionMs = timelineState.durationMs,
+                durationMs = length,
+                sourceStartMs = 0L,
+                sourceEndMs = length
             )
+            timelineState = TimelineEngine.addVideoClip(timelineState, timelineClip)
+            selectedClipId = clipId
 
-            clips.add(clip)
-            selectedClipId = clip.id
-
-            rebuildPlaylist(clips.lastIndex)
+            rebuildPlaylist(currentVideoClips().lastIndex)
             status = "Media added to timeline"
             page = StudioPage.EDIT
 
@@ -168,31 +193,29 @@ fun VisionStudioApp() {
             return
         }
 
-        val clip = clips[index]
-
-        // الموضع الحالي محلي داخل العنصر الجاري تشغيله.
-        val localPosition = player.currentPosition
-        val splitAt = clip.startMs + localPosition
-
-        if (splitAt <= clip.startMs + 500L ||
-            splitAt >= clip.endMs - 500L
-        ) {
-            status = "Move playhead inside the selected clip"
+        val clip = timelineState.videoClips.firstOrNull {
+            it.id == selectedClipId.toString()
+        } ?: run {
+            status = "Selected clip is missing from timeline state"
             return
         }
 
-        val first = clip.copy(endMs = splitAt)
+        // ExoPlayer reports the local position inside the selected source clip.
+        val splitAtTimelineMs = clip.positionMs + player.currentPosition
+        val secondId = nextId++.toString()
+        try {
+            timelineState = TimelineEngine.splitVideoClip(
+                state = timelineState,
+                clipId = clip.id,
+                splitAtMs = splitAtTimelineMs,
+                secondClipId = secondId
+            )
+        } catch (e: IllegalArgumentException) {
+            status = e.message ?: "Unable to split clip at this position"
+            return
+        }
 
-        val second = clip.copy(
-            id = nextId++,
-            name = clip.name + " • Part 2",
-            startMs = splitAt
-        )
-
-        clips[index] = first
-        clips.add(index + 1, second)
-
-        selectedClipId = second.id
+        selectedClipId = secondId.toInt()
         rebuildPlaylist(index + 1)
 
         status = "Clip split into two parts"
@@ -208,14 +231,18 @@ fun VisionStudioApp() {
             return
         }
 
-        clips.removeAt(index)
+        timelineState = TimelineEngine.removeVideoClip(
+            timelineState,
+            selectedClipId.toString()
+        )
+        val remainingClips = currentVideoClips()
 
-        if (clips.isEmpty()) {
+        if (remainingClips.isEmpty()) {
             selectedClipId = -1
             rebuildPlaylist()
         } else {
-            val next = index.coerceAtMost(clips.lastIndex)
-            selectedClipId = clips[next].id
+            val next = index.coerceAtMost(remainingClips.lastIndex)
+            selectedClipId = remainingClips[next].id
             rebuildPlaylist(next)
         }
 
@@ -254,6 +281,13 @@ fun VisionStudioApp() {
         while (true) {
             currentPosition = player.currentPosition.coerceAtLeast(0L)
             playerDuration = player.duration.coerceAtLeast(0L)
+            val activeIndex = player.currentMediaItemIndex.coerceAtLeast(0)
+            val timelinePosition = currentVideoClips().take(activeIndex)
+                .sumOf { it.durationMs } + currentPosition
+            val safePlayhead = timelinePosition.coerceIn(0L, timelineState.durationMs)
+            if (timelineState.playheadMs != safePlayhead) {
+                timelineState = TimelineEngine.setPlayhead(timelineState, safePlayhead)
+            }
             delay(250)
         }
     }
@@ -263,6 +297,14 @@ fun VisionStudioApp() {
             onOpenProject = { project ->
                 activeProject = project
                 projectName = project.name
+                timelineState = timelineState.copy(
+                    settings = TimelineProjectSettings(
+                        width = project.settings.width,
+                        height = project.settings.height,
+                        frameRate = project.settings.frameRate,
+                        audioSampleRate = project.settings.audioSampleRate
+                    )
+                )
                 showProjectHome = false
                 status = "Project opened: ${project.name}"
             }
@@ -327,6 +369,10 @@ fun VisionStudioApp() {
                     position = currentPosition,
                     onSelect = { index, clip ->
                         selectedClipId = clip.id
+                        timelineState = TimelineEngine.setPlayhead(
+                            timelineState,
+                            timelineState.videoClips.getOrNull(index)?.positionMs ?: 0L
+                        )
                         player.seekTo(index, 0L)
                         player.pause()
                     }

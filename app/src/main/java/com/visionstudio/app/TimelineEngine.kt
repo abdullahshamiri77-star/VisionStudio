@@ -420,6 +420,72 @@ object TimelineEngine {
         )
             return validated(clampPlayheadUnchecked(result))
     }
+    fun addVideoClip(state: TimelineState, clip: TimelineVideoClip): TimelineState {
+        validateState(state)
+        requireUniqueClipId(state, clip.id)
+        track(state, clip.trackId, TimelineTrackType.VIDEO)
+        requireVideo(clip)
+        return validated(state.copy(videoClips = state.videoClips + clip))
+    }
+
+    fun removeVideoClip(state: TimelineState, clipId: String): TimelineState {
+        validateState(state)
+        if (state.videoClips.none { it.id == clipId }) return state
+        val result = state.copy(
+            videoClips = state.videoClips.filterNot { it.id == clipId },
+            transitions = state.transitions.filterNot {
+                it.fromClipId == clipId || it.toClipId == clipId
+            },
+            keyframes = state.keyframes.filterNot { it.clipId == clipId }
+        )
+        return validated(clampPlayheadUnchecked(result))
+    }
+
+    fun splitVideoClip(
+        state: TimelineState,
+        clipId: String,
+        splitAtMs: Long,
+        secondClipId: String
+    ): TimelineState {
+        validateState(state)
+        val index = state.videoClips.indexOfFirst { it.id == clipId }
+        require(index >= 0) { "Video clip not found: $clipId" }
+        requireUniqueClipId(state, secondClipId)
+        val clip = state.videoClips[index]
+        track(state, clip.trackId, TimelineTrackType.VIDEO)
+
+        val leftDuration = splitAtMs - clip.positionMs
+        require(leftDuration > 0L && leftDuration < clip.durationMs) {
+            "Split point must be inside the selected clip"
+        }
+        val rightDuration = clip.durationMs - leftDuration
+        val sourceSplit = clip.sourceStartMs +
+            (leftDuration.toDouble() * clip.speed).roundToLong()
+        require(sourceSplit > clip.sourceStartMs && sourceSplit < clip.sourceEndMs) {
+            "Split point is outside the source range"
+        }
+
+        val first = clip.copy(durationMs = leftDuration, sourceEndMs = sourceSplit)
+        val second = clip.copy(
+            id = secondClipId,
+            name = clip.name + " • Part 2",
+            positionMs = splitAtMs,
+            durationMs = rightDuration,
+            sourceStartMs = sourceSplit
+        )
+        val updated = state.videoClips.toMutableList().apply {
+            this[index] = first
+            add(index + 1, second)
+        }
+        return validated(state.copy(videoClips = updated))
+    }
+
+    fun setPlayhead(state: TimelineState, positionMs: Long): TimelineState {
+        validateState(state)
+        require(positionMs >= 0L) { "Playhead must not be negative" }
+        return validated(state.copy(playheadMs = positionMs.coerceAtMost(state.durationMs)))
+    }
+
 }
 
                 
