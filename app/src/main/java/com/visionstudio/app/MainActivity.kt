@@ -2,7 +2,6 @@
 package com.visionstudio.app
 
 import android.content.Intent
-import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -66,6 +65,8 @@ fun VisionStudioApp() {
     var currentPosition by remember { mutableLongStateOf(0L) }
     var playerDuration by remember { mutableLongStateOf(0L) }
     var playing by remember { mutableStateOf(false) }
+    var pendingImportUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingImportName by remember { mutableStateOf<String?>(null) }
 
     var timelineState by remember { mutableStateOf(
         TimelineState(tracks = TimelineEngine.createDefaultTracks())
@@ -123,58 +124,31 @@ fun VisionStudioApp() {
 
     fun importVideo(uri: Uri) {
         try {
-            context.contentResolver.takePersistableUriPermission(
-                uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION
-            )
-        } catch (_: Exception) {
-            // بعض مصادر الملفات لا تمنح صلاحية دائمة.
-        }
-
-        try {
-            val retriever = MediaMetadataRetriever()
-            val length: Long
-
             try {
-                retriever.setDataSource(context, uri)
-                length = retriever.extractMetadata(
-                    MediaMetadataRetriever.METADATA_KEY_DURATION
-                )?.toLongOrNull() ?: 0L
-            } finally {
-                retriever.release()
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (_: SecurityException) {
+                // Some document providers grant temporary access only.
             }
 
-            if (length <= 0L) {
-                status = "Could not read video duration"
-                return
-            }
+            val name = uri.lastPathSegment?.substringAfterLast('/')?.takeIf {
+                it.isNotBlank()
+            } ?: "Video $nextId"
 
-            val name = uri.lastPathSegment ?: "Video $nextId"
-
-            val clipId = nextId++
-            val videoTrack = timelineState.tracks.firstOrNull {
-                it.type == TimelineTrackType.VIDEO && !it.isLocked
-            } ?: throw IllegalStateException("No available video track")
-
-            val timelineClip = TimelineVideoClip(
-                id = clipId.toString(),
-                trackId = videoTrack.id,
-                sourceUri = uri.toString(),
-                name = name,
-                positionMs = timelineState.durationMs,
-                durationMs = length,
-                sourceStartMs = 0L,
-                sourceEndMs = length
-            )
-            timelineState = TimelineEngine.addVideoClip(timelineState, timelineClip)
-            selectedClipId = clipId
-
-            rebuildPlaylist(currentVideoClips().lastIndex)
-            status = "Media added to timeline"
+            pendingImportUri = uri
+            pendingImportName = name
+            player.pause()
+            player.clearMediaItems()
+            player.setMediaItem(MediaItem.fromUri(uri))
+            player.prepare()
+            status = "Reading video metadata..."
             page = StudioPage.EDIT
-
         } catch (e: Exception) {
-            status = "Import failed: ${e.message}"
+            pendingImportUri = null
+            pendingImportName = null
+            status = "Import failed: ${e.message ?: e.javaClass.simpleName}"
         }
     }
 
@@ -267,11 +241,54 @@ fun VisionStudioApp() {
 
             override fun onPlaybackStateChanged(state: Int) {
                 playerDuration = player.duration.coerceAtLeast(0L)
+
+                if (state == Player.STATE_READY && pendingImportUri != null) {
+                    val importedUri = pendingImportUri
+                    val importedName = pendingImportName ?: "Video $nextId"
+                    val durationMs = player.duration
+
+                    pendingImportUri = null
+                    pendingImportName = null
+
+                    if (importedUri != null && durationMs > 0L) {
+                        try {
+                            val videoTrack = timelineState.tracks.firstOrNull {
+                                it.type == TimelineTrackType.VIDEO && !it.isLocked
+                            } ?: throw IllegalStateException("No available video track")
+
+                            val clipId = nextId++
+                            val timelineClip = TimelineVideoClip(
+                                id = clipId.toString(),
+                                trackId = videoTrack.id,
+                                sourceUri = importedUri.toString(),
+                                name = importedName,
+                                positionMs = timelineState.durationMs,
+                                durationMs = durationMs,
+                                sourceStartMs = 0L,
+                                sourceEndMs = durationMs
+                            )
+                            timelineState = TimelineEngine.addVideoClip(timelineState, timelineClip)
+                            selectedClipId = clipId
+                            rebuildPlaylist(currentVideoClips().lastIndex)
+                            status = "Media added to timeline"
+                        } catch (e: Exception) {
+                            status = "Import failed: ${e.message ?: e.javaClass.simpleName}"
+                        }
+                    } else {
+                        status = "Import failed: video duration is unavailable"
+                    }
+                }
             }
 
             override fun onPlayerError(error: PlaybackException) {
                 playing = false
-                status = "Playback error (${error.errorCodeName}): ${error.message ?: "Unknown media error"}"
+                if (pendingImportUri != null) {
+                    pendingImportUri = null
+                    pendingImportName = null
+                    status = "Import failed (${error.errorCodeName}): ${error.message ?: "Unsupported or unreadable video"}"
+                } else {
+                    status = "Playback error (${error.errorCodeName}): ${error.message ?: "Unknown media error"}"
+                }
             }
         }
 
