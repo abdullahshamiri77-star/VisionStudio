@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.PlaybackException
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
@@ -266,6 +267,11 @@ fun VisionStudioApp() {
 
             override fun onPlaybackStateChanged(state: Int) {
                 playerDuration = player.duration.coerceAtLeast(0L)
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                playing = false
+                status = "Playback error (${error.errorCodeName}): ${error.message ?: "Unknown media error"}"
             }
         }
 
@@ -637,6 +643,13 @@ private fun PageTools(
 
             StudioPage.CUT, StudioPage.EDIT -> {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ToolButton(
+                        "Import",
+                        Icons.Default.Add,
+                        Modifier.weight(1f),
+                        onImport
+                    )
+
                     ToolButton(
                         "Split",
                         Icons.Default.ContentCut,
